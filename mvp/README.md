@@ -49,6 +49,8 @@ python app.py
 - Detects visible password forms on the starting page and same-origin sign-in links
 - Prompts the user for username/email and password when a standard login form is detected
 - Reuses the authenticated browser session for same-origin discovery; credentials are never written to reports or browser storage
+- Starts crawling from the actual post-login destination (for example, an inventory/dashboard URL) rather than reloading the login URL
+- Distinguishes a real login form from an arbitrary password field to reduce false session-expiry errors
 - Masks input and textarea fields in screenshots (other account-page content may still be visible)
 - No form submission or destructive interactions
 - No AI-generated test cases yet
