@@ -8,8 +8,10 @@ from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent
 from app.schemas import WebsiteCreate, WebsiteRead, SessionCreate, SessionRead, HealthRead
 from app.security import validate_target_url, UnsafeTarget
 from celery import Celery
+from app.seed import seed_demo_website
 
 Base.metadata.create_all(bind=engine)
+seed_demo_website()
 queue = Celery("ai78qa-api", broker=settings.redis_url, backend=settings.redis_url)
 app = FastAPI(title="AI78QA API", version="0.1.0", description="Autonomous QA and Training Lab API")
 app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
