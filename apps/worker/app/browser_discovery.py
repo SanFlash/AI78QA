@@ -285,9 +285,9 @@ async def explore(session_id: str) -> dict:
                           }
                         """)
                         page_evidence_name = f"page-{page_count + 1:04d}.jpg"
-                        await page.screenshot(path=str(evidence_root / page_evidence_name), type="jpeg", quality=70, full_page=False, animations="disabled")
+                        await page.screenshot(path=str(evidence_root / page_evidence_name), type="jpeg", quality=60, full_page=False, animations="disabled")
                         evidence_bytes = (evidence_root / page_evidence_name).read_bytes()
-                        if len(evidence_bytes) <= 2_000_000:
+                        if len(evidence_bytes) <= 750_000:
                             db.add(EvidenceArtifact(session_id=session.id, filename=page_evidence_name, mime_type="image/jpeg", data=evidence_bytes))
                             evidence_enabled = True
                         else:
@@ -396,9 +396,9 @@ async def explore(session_id: str) -> dict:
                                         filter: blur(8px) !important; color: transparent !important; text-shadow: none !important;
                                       }
                                     """)
-                                    await page.screenshot(path=str(evidence_root / candidate_evidence_name), type="jpeg", quality=70, full_page=False, animations="disabled")
+                                    await page.screenshot(path=str(evidence_root / candidate_evidence_name), type="jpeg", quality=60, full_page=False, animations="disabled")
                                     evidence_bytes = (evidence_root / candidate_evidence_name).read_bytes()
-                                    if len(evidence_bytes) <= 2_000_000:
+                                    if len(evidence_bytes) <= 750_000:
                                         db.add(EvidenceArtifact(session_id=session.id, filename=candidate_evidence_name, mime_type="image/jpeg", data=evidence_bytes))
                                         transition_evidence_name = candidate_evidence_name
                                     else:
