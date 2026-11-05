@@ -129,22 +129,38 @@ async def page_snapshot(page) -> dict:
       };
       const clean = value => String(value || '').replace(/\\s+/g, ' ').trim().slice(0, 300);
       const nodes = Array.from(document.querySelectorAll(
-        'a[href],button,input,select,textarea,[role],summary,[tabindex],[contenteditable=true],[data-testid]'
+        'a[href],button,input,select,textarea,[role],summary,[tabindex],[onclick],[contenteditable=true],[data-testid]'
       )).slice(0, 500);
       const elements = nodes.map((el, index) => {
-        const tag = el.tagName.toLowerCase(), role = el.getAttribute('role') || '';
-        const label = el.getAttribute('aria-label') ||
-          el.getAttribute('aria-labelledby') ||
-          el.labels?.[0]?.innerText ||
-          el.innerText || el.getAttribute('placeholder') ||
-          el.getAttribute('name') || el.getAttribute('title') || '';
+        const tag = el.tagName.toLowerCase(), declaredRole = el.getAttribute('role') || '';
+        const labelledBy = (el.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
+          .map(id => document.getElementById(id)?.innerText || '').join(' ');
+        const label = el.getAttribute('aria-label') || labelledBy ||
+          el.labels?.[0]?.innerText || el.getAttribute('title') ||
+          el.getAttribute('placeholder') || el.getAttribute('name') || el.innerText || '';
+        const role = declaredRole || (tag === 'a' ? 'link' : tag === 'button' ? 'button' :
+          tag === 'select' ? 'combobox' : tag === 'textarea' ? 'textbox' :
+          tag === 'input' ? ((el.type === 'checkbox' || el.type === 'radio') ? el.type : 'textbox') : '');
+        const accessibleName = clean(label);
         const r = el.getBoundingClientRect();
         const href = tag === 'a' ? el.href : null;
+        const locatorHints = [];
+        if (role && accessibleName) locatorHints.push({strategy: 'role', role, name: accessibleName});
+        if (el.labels?.[0]?.innerText) locatorHints.push({strategy: 'label', label: clean(el.labels[0].innerText)});
+        if (el.getAttribute('data-testid')) locatorHints.push({strategy: 'test_id', value: el.getAttribute('data-testid')});
+        if (el.id) locatorHints.push({strategy: 'id', value: el.id});
         const item = {
           index, tag, role, type: el.getAttribute('type') || '',
-          name: clean(label), text: clean(el.innerText), placeholder: clean(el.getAttribute('placeholder')),
+          name: accessibleName, text: clean(el.innerText), placeholder: clean(el.getAttribute('placeholder')),
           id: el.id || null, test_id: el.getAttribute('data-testid'),
-          name_attr: el.getAttribute('name'), href,
+          name_attr: el.getAttribute('name'), href, locator_hints: locatorHints,
+          stable_attributes: {id: el.id || null, test_id: el.getAttribute('data-testid'), name: el.getAttribute('name')},
+          constraints: {required: !!el.required, min: el.getAttribute('min'), max: el.getAttribute('max'),
+            min_length: el.getAttribute('minlength'), max_length: el.getAttribute('maxlength'),
+            pattern: el.getAttribute('pattern'), autocomplete: el.getAttribute('autocomplete')},
+          select_options: tag === 'select' ? Array.from(el.options).slice(0, 60).map(option => ({
+            label: clean(option.label || option.text), value_present: !!option.value, selected: option.selected, disabled: option.disabled
+          })) : [],
           visible: visible(el), enabled: !el.disabled && el.getAttribute('aria-disabled') !== 'true',
           checked: 'checked' in el ? !!el.checked : null,
           expanded: el.getAttribute('aria-expanded'),
@@ -169,6 +185,15 @@ async def page_snapshot(page) -> dict:
         title: document.title || '', url: location.href,
         description: document.querySelector('meta[name=description]')?.content || '',
         headings, forms, elements,
+        tables: Array.from(document.querySelectorAll('table')).slice(0, 40).map((table, index) => ({
+          index, caption: clean(table.caption?.innerText),
+          headers: Array.from(table.querySelectorAll('thead th')).slice(0, 60).map(th => clean(th.innerText)),
+          row_count: table.querySelectorAll('tbody tr').length,
+          has_pagination: !!table.querySelector('[aria-label*=pagination], [aria-label*=Pagination], .pagination')
+        })),
+        landmarks: Array.from(document.querySelectorAll('nav,header,footer,main,aside')).slice(0, 40).map(el => ({
+          tag: el.tagName.toLowerCase(), label: clean(el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || '')
+        })),
         body_text: clean(document.body?.innerText).slice(0, 6000)
       };
     }""")
