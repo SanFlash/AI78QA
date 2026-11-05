@@ -160,9 +160,14 @@ def get_discovery_graph(session_id: str, db: Session = Depends(get_db)):
                 "after_state": features.get("after_state"),
                 "evidence_file": features.get("evidence_file"),
             })
+    page_items = list(pages.values())
+    navigation_edges = [
+        {"from": page["discovered_from"], "to": page["url"]}
+        for page in page_items if page.get("discovered_from")
+    ]
     return {
         "session_id": session_id, "status": session.status,
-        "pages": list(pages.values()), "transitions": transitions,
+        "pages": page_items, "navigation_edges": navigation_edges, "transitions": transitions,
         "summary": session.summary or {},
         "counts": {
             "pages": len(pages), "transitions": len(transitions),
