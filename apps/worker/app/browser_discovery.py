@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import re
 import socket
 from collections import deque
 from datetime import datetime, timezone
@@ -56,9 +57,12 @@ def canonical_url(raw: str, base: str, allowed_host: str) -> str | None:
             return None
         # Drop common analytics parameters while preserving application state/query parameters.
         pairs = []
+        sensitive_keys = {"token", "access_token", "refresh_token", "id_token", "code", "key",
+                          "api_key", "secret", "password", "session", "sessionid", "auth",
+                          "signature", "sig", "state", "nonce"}
         for item in parsed.query.split("&") if parsed.query else []:
             key = item.split("=", 1)[0].lower()
-            if key.startswith("utm_") or key in {"gclid", "fbclid", "ref_src"}:
+            if key.startswith("utm_") or key in {"gclid", "fbclid", "ref_src"} or key in sensitive_keys:
                 continue
             pairs.append(item)
         return urlunparse((parsed.scheme, parsed.netloc, parsed.path or "/", parsed.params, "&".join(pairs), ""))
@@ -69,6 +73,25 @@ def canonical_url(raw: str, base: str, allowed_host: str) -> str | None:
 def stable_hash(value: object) -> str:
     payload = json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
+
+
+def redact_text(value: str) -> str:
+    value = re.sub(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", "[REDACTED_EMAIL]", value, flags=re.I)
+    value = re.sub(r"(?<!\w)(?:\+?\d[\d .()/-]{7,}\d)(?!\w)", "[REDACTED_PHONE_OR_NUMBER]", value)
+    value = re.sub(r"\b(?:\d[ -]*?){13,19}\b", "[REDACTED_PAYMENT_NUMBER]", value)
+    return value[:6000]
+
+
+def scrub_snapshot(snapshot: dict) -> dict:
+    def scrub(value):
+        if isinstance(value, str):
+            return redact_text(value)
+        if isinstance(value, list):
+            return [scrub(item) for item in value]
+        if isinstance(value, dict):
+            return {key: scrub(item) for key, item in value.items()}
+        return value
+    return scrub(snapshot)
 
 
 async def install_request_guard(context, allowed_host: str):
@@ -190,7 +213,7 @@ async def explore(session_id: str) -> dict:
             page = await context.new_page()
             page.set_default_timeout(5000)
             page.on("console", lambda msg: console_errors.append(msg.text[:500]) if msg.type == "error" and len(console_errors) < 50 else None)
-            page.on("requestfailed", lambda req: request_failures.append({"url": req.url[:500], "failure": (req.failure or "")[:200]}) if len(request_failures) < 50 else None)
+            page.on("requestfailed", lambda req: request_failures.append({"url": urlunparse((*urlparse(req.url)[:4], "", ""))[:500], "failure": (req.failure or "")[:200]}) if len(request_failures) < 50 else None)
 
             while queue and page_count < session.max_pages:
                 url, depth, discovered_from = queue.popleft()
@@ -214,7 +237,7 @@ async def explore(session_id: str) -> dict:
                     except PlaywrightTimeoutError:
                         pass
                     await page.wait_for_timeout(350)
-                    snapshot = await page_snapshot(page)
+                    snapshot = scrub_snapshot(await page_snapshot(page))
                     current_url = canonical_url(page.url, site.base_url, host) or normalized
                     page_key = stable_hash({"url": current_url, "title": snapshot["title"], "headings": snapshot["headings"]})
                     route_inventory.append({"url": current_url, "title": snapshot["title"], "depth": depth, "discovered_from": discovered_from, "page_key": page_key})
@@ -259,7 +282,7 @@ async def explore(session_id: str) -> dict:
                         try:
                             if not await locator.is_visible() or not await locator.is_enabled():
                                 continue
-                            before = await page_snapshot(page)
+                            before = scrub_snapshot(await page_snapshot(page))
                             target = await locator.evaluate("""el => ({
                               tag: el.tagName.toLowerCase(),
                               role: el.getAttribute('role') || '',
@@ -287,7 +310,7 @@ async def explore(session_id: str) -> dict:
                             if not after_url:
                                 await page.go_back(wait_until="domcontentloaded", timeout=5000)
                                 continue
-                            after = await page_snapshot(page)
+                            after = scrub_snapshot(await page_snapshot(page))
                             # Menus, tabs and accordions often reveal routes absent from the initial DOM.
                             revealed_links = await page.locator("a[href]").evaluate_all("(els) => els.map(a => a.href).slice(0, 250)")
                             for revealed in revealed_links:
