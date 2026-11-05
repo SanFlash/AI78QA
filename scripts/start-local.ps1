@@ -25,7 +25,7 @@ if (-not (Test-Path ".env")) {
   $envText = $envText.Replace("replace-with-a-long-random-value", (New-LocalSecret))
   $envText = $envText.Replace("replace-with-a-strong-local-password", (New-LocalSecret))
   $envText = $envText.Replace("local-development-only", (New-LocalSecret))
-  [System.IO.File]::WriteAllText((Join-Path $RepoRoot ".env"), $envText, (New-Object System.Text.UTF8Encoding($false)))
+  [System.IO.File]::WriteAllText((Join-Path $RepoRoot ".env"), $envText, [System.Text.UTF8Encoding]::new($false))
   Write-Host "Created .env with random local-only secrets."
 }
 
