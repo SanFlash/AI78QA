@@ -138,7 +138,7 @@ def get_discovery_graph(session_id: str, db: Session = Depends(get_db)):
                 "discovered_from": features.get("discovered_from"),
                 "headings": features.get("headings", []),
                 "forms": features.get("forms", []),
-                "element_count": features.get("element_count", 0),
+                "element_count": features.get("element_count", 0),\n                "evidence_file": features.get("evidence_file"),
             }
         elif features.get("kind") == "interaction_transition":
             transitions.append({
@@ -147,7 +147,7 @@ def get_discovery_graph(session_id: str, db: Session = Depends(get_db)):
                 "action": features.get("action"), "target": features.get("target"),
                 "state_changed": features.get("state_changed", False),
                 "before_state": features.get("before_state"),
-                "after_state": features.get("after_state"),
+                "after_state": features.get("after_state"),\n                "evidence_file": features.get("evidence_file"),
             })
     return {
         "session_id": session_id, "status": session.status,
@@ -165,7 +165,7 @@ def get_evidence_file(session_id: str, filename: str, db: Session = Depends(get_
     session = db.get(TrainingSession, session_id)
     if not session:
         raise HTTPException(404, "Session not found.")
-    if not re.fullmatch(r"[A-Za-z0-9_-]+\\.png", filename):
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\.png", filename):
         raise HTTPException(400, "Invalid evidence filename.")
     root = Path(os.getenv("EVIDENCE_DIR", "/data/evidence")).resolve()
     target = (root / session_id / filename).resolve()
