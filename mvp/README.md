@@ -36,7 +36,7 @@ python app.py
 ## Current features
 
 - URL-based website discovery
-- Same-origin page crawling (1–15 pages)
+- Same-origin breadth-first page crawling (up to 500 pages per scan; choose 25, 50, 100, 250 or 500)
 - Page titles and headings
 - Links, buttons, input fields, dropdown options and forms
 - Table headers and page landmarks
@@ -44,7 +44,8 @@ python app.py
 - Authenticated same-origin crawling using the live post-login session
 - Safe exploration of visible menus, tabs, accordions, details and other low-risk controls, recording observed state changes
 - Passive capture of same-origin network requests and API-like endpoint URLs
-- Downloadable JSON report and a Markdown discovery document with page-by-page details
+- Detailed Markdown discovery report and complete JSON report
+- Extracted link inventory per page, including links revealed by safe menu interactions and a Markdown discovery document with page-by-page details
 - Local-only dashboard
 
 ## Deliberate MVP limitations
@@ -57,6 +58,7 @@ python app.py
 - Masks input and textarea fields in screenshots (other account-page content may still be visible)
 - No application form submission or destructive business interactions (purchases, payments, sending messages, deleting records, or logout)
 - Safe UI exploration is heuristic and does not guarantee every control or business workflow is covered
+- Crawling is limited to 500 pages per run; external domains are recorded but not crawled
 - API discovery is passive: requests are observed, not replayed, fuzzed, or attacked
 - No AI-generated test cases yet
 - No automated pass/fail assertions
