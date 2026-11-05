@@ -34,6 +34,19 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://ai78qa:${POSTGRES_PASSWORD:-ai78qa-local-password}@postgres:5432/ai78qa
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    init: true
+    shm_size: 1gb
+    restart: unless-stopped
   web:
     build:
       context: ..
