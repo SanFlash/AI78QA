@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI78QA — Website Discovery MVP</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#e8edf7;background:#0b1020}
+    *{box-sizing:border-box}body{margin:0;padding:32px 18px;background:radial-gradient(circle at 15% 0%,#18264a 0,#0b1020 42%);min-height:100vh}
+    .wrap{max-width:1050px;margin:auto}.top{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+    .logo{width:42px;height:42px;border-radius:12px;background:#6d7cff;display:grid;place-items:center;font-weight:800;color:white}
+    h1{font-size:24px;margin:0}.muted{color:#9aa8c3}.panel{background:#121a2d;border:1px solid #273450;border-radius:16px;padding:22px;margin-bottom:18px;box-shadow:0 16px 50px #0003}
+    label{display:block;font-size:13px;color:#b7c3d9;margin:0 0 8px}input,select{width:100%;padding:13px 14px;border-radius:9px;border:1px solid #354665;background:#0c1425;color:#fff;font-size:15px}
+    .controls{display:grid;grid-template-columns:1fr 130px auto;gap:12px;align-items:end}
+    button{border:0;border-radius:9px;background:#7181ff;color:#fff;font-weight:700;padding:14px 20px;cursor:pointer}button:hover{background:#8995ff}
+    .notice{font-size:13px;line-height:1.5;color:#9eacc5;margin-top:14px}.error{background:#4b202b;color:#ffd9df;padding:12px;border-radius:9px;margin-bottom:14px}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.stat{padding:14px;background:#0c1425;border-radius:10px}.stat strong{display:block;font-size:24px;margin-top:4px}
+    .page{padding:16px 0;border-top:1px solid #283650}.page h3{margin:0 0 6px;font-size:16px;overflow-wrap:anywhere}.chips{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+    .chip{font-size:12px;background:#202d49;color:#c9d4ef;border-radius:20px;padding:5px 9px}.detail{color:#aab8d1;font-size:13px;line-height:1.7}
+    a{color:#aab5ff}.small{font-size:12px;color:#8493ad}
+    @media(max-width:700px){.controls{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}body{padding:20px 12px}}
+  </style>
+</head>
+<body><main class="wrap">
+  <header class="top"><div class="logo">78</div><div><h1>AI78QA</h1><div class="muted">Website discovery · Lightweight MVP</div></div></header>
+  <section class="panel">
+    <h2 style="margin-top:0">Explore a website</h2>
+    <p class="muted">Enter a URL and discover its pages, links, forms, fields, buttons and page structure.</p>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="/scan">
+      <div class="controls">
+        <div><label for="url">Website URL</label><input id="url" name="url" type="url" placeholder="https://example.com" required value="{{ request.form.get('url','') }}"></div>
+        <div><label for="max_pages">Maximum pages</label><select id="max_pages" name="max_pages">{% for n in [3,5,10,15] %}<option value="{{n}}" {% if request.form.get('max_pages','5')|int == n %}selected{% endif %}>{{n}} pages</option>{% endfor %}</select></div>
+        <button type="submit">Start discovery</button>
+      </div>
+    </form>
+    <p class="notice">Safety: the crawler stays on the starting website's origin. It observes pages but does not submit forms, log in, purchase items or click destructive controls. Use only websites you are authorized to test.</p>
+  </section>
+  {% if report %}
+  <section class="panel">
+    <h2 style="margin-top:0">Discovery summary</h2>
+    <div class="stats">
+      <div class="stat"><span class="muted">Pages scanned</span><strong>{{report.pages_scanned}}</strong></div>
+      <div class="stat"><span class="muted">Errors</span><strong>{{report.errors_count}}</strong></div>
+      <div class="stat"><span class="muted">Total forms</span><strong>{{report.pages|sum(attribute='forms')|length if false else report.pages|map(attribute='forms')|map('length')|sum}}</strong></div>
+    </div>
+    <p class="small">Target: {{report.target}} · {{report.created_at}}</p>
+    <p><a href="{{url_for('download_report', filename=report.report_file)}}">Download JSON report</a></p>
+    {% for page in report.pages %}
+      <article class="page">
+        <h3>{{page.title or 'Untitled page'}}</h3>
+        <div class="small">{{page.url}}</div>
+        <div class="chips">
+          <span class="chip">{{page.links|length}} links</span><span class="chip">{{page.buttons|length}} buttons</span>
+          <span class="chip">{{page.fields|length}} fields</span><span class="chip">{{page.forms|length}} forms</span>
+          <span class="chip">{{page.tables|length}} tables</span>
+        </div>
+        {% if page.headings %}<div class="detail"><b>Headings:</b> {{page.headings|join(' · ')}}</div>{% endif %}
+        {% if page.fields %}<div class="detail"><b>Fields:</b> {% for field in page.fields[:12] %}{{field.tag}}{% if field.type %} ({{field.type}}){% endif %} — {{field.name or field.id or field.placeholder or field.ariaLabel or 'unnamed'}}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
+        {% if page.screenshot %}<div class="detail"><a href="/reports/{{page.screenshot}}" target="_blank">Open screenshot</a></div>{% endif %}
+      </article>
+    {% endfor %}
+    {% if report.errors %}<h3>Page errors</h3>{% for item in report.errors %}<p class="detail">{{item.url}} — {{item.error}}</p>{% endfor %}{% endif %}
+  </section>
+  {% endif %}
+  <p class="small">AI78QA MVP · Local-only dashboard · Runs on 127.0.0.1</p>
+</main></body></html>
