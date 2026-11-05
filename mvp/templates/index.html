@@ -25,16 +25,16 @@
   <header class="top"><div class="logo">78</div><div><h1>AI78QA</h1><div class="muted">Website discovery · Lightweight MVP</div></div></header>
   <section class="panel">
     <h2 style="margin-top:0">Explore a website</h2>
-    <p class="muted">Crawl reachable pages and inspect navigation, links, forms, controls, fields, tables, screenshots and network activity.</p>
+    <p class="muted">Discover reachable pages from links, sitemaps and common SPA route hints. Inspect navigation, controls, forms, fields, tables, screenshots and network activity. Large scans can take several minutes.</p>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <form method="post" action="/scan">
+    <form id="scan-form" method="post" action="/scan">
       <div class="controls">
         <div><label for="url">Website URL</label><input id="url" name="url" type="url" placeholder="https://example.com" required value="{{ request.form.get('url','') }}"></div>
         <div><label for="max_pages">Maximum pages (up to 500)</label><select id="max_pages" name="max_pages">{% for n in [25,50,100,250,500] %}<option value="{{n}}" {% if request.form.get('max_pages','100')|int == n %}selected{% endif %}>{{n}} pages</option>{% endfor %}</select></div>
-        <button type="submit">Start discovery</button>
+        <button id="scan-button" type="submit">Start discovery</button>
       </div>
     </form>
-    <p class="notice">Safety: the crawler stays on the starting website's origin. It observes pages and does not execute purchases, messages or destructive actions. If it detects a standard login form, it will ask for credentials before continuing. Use only websites you are authorized to test.</p>
+    <p class="notice">Safety: the crawler stays on the starting website's origin. It observes pages and does not execute purchases, messages or destructive actions. If it detects a standard login form, it will ask for credentials before continuing. Use only websites you are authorized to test. The crawler skips logout and obvious transactional links, and never submits application forms.</p>
   </section>
   {% if login_required %}
   <section class="panel">
@@ -83,4 +83,17 @@
   </section>
   {% endif %}
   <p class="small">AI78QA MVP · Local-only dashboard · Runs on 127.0.0.1</p>
-</main></body></html>
+</main>
+<script>
+  const scanForm = document.getElementById('scan-form');
+  const scanButton = document.getElementById('scan-button');
+  if (scanForm && scanButton) {
+    scanForm.addEventListener('submit', () => {
+      scanButton.disabled = true;
+      scanButton.textContent = 'Scanning website…';
+      scanButton.style.opacity = '0.7';
+      scanButton.style.cursor = 'wait';
+    });
+  }
+</script>
+</body></html>
