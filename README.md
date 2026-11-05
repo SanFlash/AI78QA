@@ -29,7 +29,7 @@ Next.js, TypeScript, FastAPI, PostgreSQL, Redis, SQLAlchemy, Alembic, Celery, Pl
 2. Start services: `docker compose up --build`.
 3. Apply migrations: `docker compose exec api alembic upgrade head`.
 4. Web: http://localhost:3000
-5. API docs: http://localhost:8000/docs
+5. API docs: http://localhost:8000/docs\n6. In the web app Settings, set API base URL to `http://localhost:8000/api/v1`.
 
 The control plane can be opened without an LLM key. Live registration and exploration require the API and worker to be deployed and the API base URL configured in the workspace. No model is promoted by default.
 
@@ -43,7 +43,7 @@ Vercel hosts the Next.js web/control plane. Browser automation, long-running dis
 - Explicit hostname allowlists; reject localhost, private, link-local and cloud metadata IP ranges by default.
 - No arbitrary destructive actions, purchase/payment submission, messaging or uncontrolled load tests.
 - Secrets are stored as secret references and never sent to prompts or written to logs.
-- Tenant isolation, audit events, job timeouts, concurrency limits and evidence redaction are required before multi-user production use.
+- The current API is an internal single-workspace development API and does not yet implement user authentication or tenant isolation. Do not expose it publicly until API authentication, authorization, tenant isolation and rate limits are implemented.\n- Tenant isolation, audit events, job timeouts, concurrency limits and evidence redaction are required before multi-user production use.
 
 ## Status
 
