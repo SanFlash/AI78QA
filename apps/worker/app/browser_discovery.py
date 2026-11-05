@@ -4,10 +4,12 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import os
 import re
 import socket
 from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
@@ -238,6 +240,17 @@ async def explore(session_id: str) -> dict:
                         pass
                     await page.wait_for_timeout(350)
                     snapshot = scrub_snapshot(await page_snapshot(page))
+                    evidence_root = Path(os.getenv("EVIDENCE_DIR", "/data/evidence")) / session.id
+                    evidence_root.mkdir(parents=True, exist_ok=True)
+                    page_evidence_name = f"page-{page_count + 1:04d}.png"
+                    page_evidence_path = evidence_root / page_evidence_name
+                    await page.add_style_tag(content="""
+                      input, textarea, select, [type=password], [autocomplete*=email],
+                      [autocomplete*=tel], [autocomplete*=cc-], [data-private] {
+                        color: transparent !important; text-shadow: 0 0 8px currentColor !important;
+                      }
+                    """)
+                    await page.screenshot(path=str(page_evidence_path), full_page=False, animations="disabled")
                     current_url = canonical_url(page.url, site.base_url, host) or normalized
                     page_key = stable_hash({"url": current_url, "title": snapshot["title"], "headings": snapshot["headings"]})
                     route_inventory.append({"url": current_url, "title": snapshot["title"], "depth": depth, "discovered_from": discovered_from, "page_key": page_key})
@@ -248,7 +261,8 @@ async def explore(session_id: str) -> dict:
                         features={"kind": "page_snapshot", "page_key": page_key, "description": snapshot["description"],
                                   "headings": snapshot["headings"], "forms": snapshot["forms"],
                                   "body_text": snapshot["body_text"], "element_count": len(snapshot["elements"]),
-                                  "discovered_from": discovered_from, "depth": depth},
+                                  "discovered_from": discovered_from, "depth": depth,
+                                  "evidence_file": page_evidence_name},
                         source="page_snapshot", label_verified=False
                     ))
 
@@ -319,6 +333,10 @@ async def explore(session_id: str) -> dict:
                                     queued.add(discovered)
                                     queue.append((discovered, depth + 1, after_url))
                             after_key = stable_hash({"url": after_url, "body": after["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in after["elements"][:100]]})
+                            transition_evidence_name = None
+                            if before_key != after_key:
+                                transition_evidence_name = f"state-{interaction_count + 1:04d}.png"
+                                await page.screenshot(path=str(evidence_root / transition_evidence_name), full_page=False, animations="disabled")
                             before_key = stable_hash({"url": before_url, "body": before["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in before["elements"][:100]]})
                             changed = before_key != after_key
                             interaction_count += 1
@@ -332,7 +350,8 @@ async def explore(session_id: str) -> dict:
                                           "before_state": before_key, "after_state": after_key,
                                           "before_url": before_url, "after_url": after_url,
                                           "state_changed": changed, "after_headings": after["headings"][:20],
-                                          "after_body_text": after["body_text"][:1800]},
+                                          "after_body_text": after["body_text"][:1800],
+                                          "evidence_file": transition_evidence_name},
                                 source="interaction_transition", label_verified=False
                             ))
                             db.commit()
