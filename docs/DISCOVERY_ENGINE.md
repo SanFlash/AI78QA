@@ -11,7 +11,7 @@ AI78QA discovery is a bounded, evidence-first crawl—not a link checker.
 5. Records each element independently with its page and session provenance, including resilient locator hints, form constraints, select options, tables and page landmarks.
 6. Safely exercises only low-risk UI affordances (tabs, expanded/collapsed controls, disclosure summaries, and controls with navigation/presentation semantics such as menu, open, view, expand, filter or sort).
 7. Compares before/after state fingerprints and records observed transitions. Newly revealed links are added to the crawl queue. Route discovery edges and per-run progress are exposed to the UI.
-8. Captures browser console errors and failed requests, bounded to a small sample. Page and changed-state screenshots are saved to a shared evidence volume when masking styles can be applied; the API serves those images by session-scoped filename.
+8. Captures browser console errors and failed requests, bounded to a small sample. Page and changed-state screenshots are saved as compressed JPEG evidence artifacts in PostgreSQL (maximum 2 MB per image) when masking styles can be applied; the API serves them by session-scoped filename. A local shared-volume fallback is retained for older artifacts.
 9. Stores raw observations as unverified. The ML pipeline must not treat them as labels.
 
 ## API read models
@@ -35,6 +35,6 @@ The browser is not a substitute for network-level egress isolation. Production w
 
 ## Current boundaries
 
-This release does not yet provide a persistent authenticated browser profile, user-approved form/data-entry execution, cloud object-storage retention for screenshots/traces, cross-browser execution, API schema inference, accessibility conformance certification, or end-to-end business-flow assertions. Local Docker Compose persists screenshots in a shared named volume; a cloud deployment must configure private object storage. Screenshot masking is best-effort and is not a substitute for avoiding sensitive data in test environments. It discovers and records UI-level transitions; a human or a verified oracle is still required to decide whether an outcome is correct.
+This release does not yet provide a persistent authenticated browser profile, user-approved form/data-entry execution, cloud object-storage retention for screenshots/traces, cross-browser execution, API schema inference, accessibility conformance certification, or end-to-end business-flow assertions. PostgreSQL stores the current screenshot artifacts for both local and cloud runs; long-term high-volume evidence retention should move to private object storage. Screenshot masking is best-effort and is not a substitute for avoiding sensitive data in test environments. It discovers and records UI-level transitions; a human or a verified oracle is still required to decide whether an outcome is correct.
 
 For complete production use, deploy the API, PostgreSQL, Redis, worker and object storage together. Vercel hosts the Next.js control plane only; it is not the Playwright execution host.
