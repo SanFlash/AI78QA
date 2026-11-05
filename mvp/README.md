@@ -46,11 +46,15 @@ python app.py
 
 ## Deliberate MVP limitations
 
-- No login automation or credential storage
+- Detects visible password forms on the starting page and same-origin sign-in links
+- Prompts the user for username/email and password when a standard login form is detected
+- Reuses the authenticated browser session for same-origin discovery; credentials are never written to reports or browser storage
+- Masks input and textarea fields in screenshots (other account-page content may still be visible)
 - No form submission or destructive interactions
 - No AI-generated test cases yet
 - No automated pass/fail assertions
-- JavaScript-heavy sites are inspected after initial page load; authenticated areas are not explored
+- Standard single-page username/password forms are supported; OTP, CAPTCHA, SSO, MFA and multi-step login flows may require manual handling
+- JavaScript-heavy sites are inspected after initial page load
 - No multi-user access or remote deployment
 
-This is an observation-only discovery baseline. Use it only on websites you own or are authorized to test.
+Credentials are sent only to the local Flask process for the duration of the scan and are not persisted. Use a dedicated test account, never a personal or production account. Screenshots mask form inputs but can still contain account data elsewhere on the page. This is an observation-only discovery baseline. It does not submit application forms or perform destructive actions. Use it only on websites you own or are authorized to test.
