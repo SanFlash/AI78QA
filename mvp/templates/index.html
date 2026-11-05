@@ -62,7 +62,7 @@
       <div class="stat"><span class="muted">Total forms</span><strong>{{report.pages|map(attribute='forms')|map('length')|sum}}</strong></div>
     </div>
     <p class="small">Target: {{report.target}} · {{report.created_at}}</p>
-    <p><a href="{{url_for('download_report', filename=report.report_file)}}">Download JSON report</a></p>
+    <p><a href="{{url_for('download_report', filename=report.report_file)}}">Download JSON report</a> · <a href="{{url_for('download_report', filename=report.document_file)}}">Download detailed discovery document</a></p>
     {% for page in report.pages %}
       <article class="page">
         <h3>{{page.title or 'Untitled page'}}</h3>
