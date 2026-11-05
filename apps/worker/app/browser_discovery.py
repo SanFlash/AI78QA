@@ -13,6 +13,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 from app.database import SessionLocal
 from app.models import TrainingSession, TrainingWebsite, Observation
 
+SAFE_ACTION_WORDS = {"open", "show", "view", "menu", "tab", "expand", "collapse", "filter", "sort", "next", "previous", "details", "more", "less", "toggle", "close", "back", "forward"}
 DANGEROUS_WORDS = {
     "delete", "remove", "destroy", "purchase", "buy now", "pay now",
     "checkout", "place order", "submit payment", "transfer", "send",
@@ -268,7 +269,15 @@ async def explore(session_id: str) -> dict:
                               selected: el.getAttribute('aria-selected')
                             })""")
                             words = (target.get("name") or "").lower()
-                            if target.get("type") in {"submit", "reset"} or any(word in words for word in DANGEROUS_WORDS):
+                            expanded_control = await locator.get_attribute("aria-expanded")
+                            safe_semantic_control = (
+                                target.get("role") == "tab"
+                                or expanded_control is not None
+                                or await locator.evaluate("(el) => el.tagName.toLowerCase() === 'summary' || el.hasAttribute('data-toggle') || el.hasAttribute('data-bs-toggle')")
+                                or any(word in words for word in SAFE_ACTION_WORDS)
+                            )
+                            if (not safe_semantic_control or target.get("type") in {"submit", "reset"}
+                                or any(word in words for word in DANGEROUS_WORDS)):
                                 continue
                             # Only interact with explicit UI controls, not arbitrary clickable containers.
                             before_url = canonical_url(page.url, site.base_url, host) or current_url
@@ -279,6 +288,13 @@ async def explore(session_id: str) -> dict:
                                 await page.go_back(wait_until="domcontentloaded", timeout=5000)
                                 continue
                             after = await page_snapshot(page)
+                            # Menus, tabs and accordions often reveal routes absent from the initial DOM.
+                            revealed_links = await page.locator("a[href]").evaluate_all("(els) => els.map(a => a.href).slice(0, 250)")
+                            for revealed in revealed_links:
+                                discovered = canonical_url(revealed, after_url, host)
+                                if discovered and discovered not in queued and discovered not in visited and len(queued) < 3000:
+                                    queued.add(discovered)
+                                    queue.append((discovered, depth + 1, after_url))
                             after_key = stable_hash({"url": after_url, "body": after["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in after["elements"][:100]]})
                             before_key = stable_hash({"url": before_url, "body": before["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in before["elements"][:100]]})
                             changed = before_key != after_key
