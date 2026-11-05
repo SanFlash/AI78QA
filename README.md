@@ -25,14 +25,31 @@ Next.js, TypeScript, FastAPI, PostgreSQL, Redis, SQLAlchemy, Alembic, Celery, Pl
 
 ## Quick start
 
-1. Copy `.env.example` to `.env` and set strong local credentials.
-2. Start services: `docker compose -f infra/docker-compose.yml up --build`.
-3. The API container applies Alembic migrations before serving requests.
-4. Web: http://localhost:3000
-5. API docs: http://localhost:8000/docs
-6. In the web app Settings, set API base URL to `http://localhost:8000/api/v1`.
+**Windows (PowerShell):**
 
-The control plane can be opened without an LLM key. Live registration and exploration require the API and worker to be deployed and the API base URL configured in the workspace. No model is promoted by default.
+```powershell
+.scripts\start-local.ps1
+```
+
+The startup script checks Docker Engine, creates a local `.env` with random secrets if needed, validates the Compose configuration, builds the images, starts the services, and waits for API health.
+
+**macOS / Linux:**
+
+```bash
+cp .env.example .env
+docker compose --env-file .env -f infra/docker-compose.yml up --build -d
+```
+
+Open:
+- Dashboard: http://localhost:3000
+- API documentation: http://localhost:8000/docs
+- API health: http://localhost:8000/health
+
+The web dashboard uses the same-origin `/api/ai78qa` proxy. The local stack includes PostgreSQL, Redis, FastAPI and the Playwright worker. Alembic migrations run before the API starts, and the worker waits for API health before consuming jobs.
+
+To stop without deleting your data, run `.scripts\stop-local.ps1` on Windows or `docker compose --env-file .env -f infra/docker-compose.yml down` elsewhere. To inspect failures, run `.scripts\diagnose-local.ps1`. Removing volumes requires an explicit confirmation because it permanently deletes local sessions and observations.
+
+The SauceDemo starter website is seeded automatically. In Training Lab, select SauceDemo and start an observe-only exploration. No LLM key is required for deterministic crawling.
 
 ## Vercel deployment boundary
 
@@ -49,4 +66,4 @@ Vercel hosts the Next.js control plane. Browser automation and Celery workers ru
 
 ## Status
 
-The current discovery worker performs bounded same-host crawling, inventories forms and UI elements, safely explores selected menu/tab/disclosure controls, records before/after UI state transitions, and exposes page/transition read APIs. See [Deep Browser Discovery](docs/DISCOVERY_ENGINE.md). The web build and Python checks are wired into GitHub Actions. This is a working discovery foundation—not yet a full autonomous QA suite: authenticated browser sessions, object-storage archival for large-scale evidence and browser traces, user-approved business transactions, cross-browser runs, full API testing, and production-grade identity/tenant isolation remain subsequent milestones. ML model performance must be measured on held-out websites before a model is described as transfer-ready.
+The local Docker stack is the supported free-first execution environment. It runs the API, PostgreSQL, Redis, Playwright worker and Next.js dashboard together. The current discovery worker performs bounded same-host crawling, inventories forms and UI elements, safely explores selected menu/tab/disclosure controls, records before/after UI state transitions, and exposes page/transition read APIs. See [Deep Browser Discovery](docs/DISCOVERY_ENGINE.md). The web build and Python checks are wired into GitHub Actions. This is a working discovery foundation—not yet a full autonomous QA suite: authenticated browser sessions, object-storage archival for large-scale evidence and browser traces, user-approved business transactions, cross-browser runs, full API testing, and production-grade identity/tenant isolation remain subsequent milestones. ML model performance must be measured on held-out websites before a model is described as transfer-ready.
