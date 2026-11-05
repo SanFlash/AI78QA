@@ -378,6 +378,10 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                         continue
 
                     result["interactive_exploration"] = explore_safe_interactions(page, result["url"])
+                    for action in result["interactive_exploration"]:
+                        destination = clean_url(action.get("after", {}).get("url", ""))
+                        if destination and destination != current and same_origin(start_url, destination) and destination not in visited and destination not in queue:
+                            queue.append(destination)
                     result["api_requests"] = [r for r in observed_requests if any(token in r["url"].lower() for token in ("/api/", "/graphql", "/rpc/", "/ajax/", "/rest/"))]
                     screenshot_name = f"page_{len(pages) + 1}.png"
                     save_screenshot(page, screenshot_name)
