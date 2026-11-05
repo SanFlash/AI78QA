@@ -142,7 +142,7 @@ async def page_snapshot(page) -> dict:
           el.getAttribute('placeholder') || el.getAttribute('name') || el.innerText || '';
         const role = declaredRole || (tag === 'a' ? 'link' : tag === 'button' ? 'button' :
           tag === 'select' ? 'combobox' : tag === 'textarea' ? 'textbox' :
-          tag === 'input' ? ((el.type === 'checkbox' || el.type === 'radio') ? el.type : 'textbox') : '');
+          tag === 'input' ? (['submit','button','reset','image'].includes(el.type) ? 'button' : ((el.type === 'checkbox' || el.type === 'radio') ? el.type : 'textbox')) : '');
         const accessibleName = clean(label);
         const r = el.getBoundingClientRect();
         const href = tag === 'a' ? el.href : null;
