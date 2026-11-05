@@ -9,6 +9,7 @@ import re
 import socket
 from collections import deque
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
@@ -32,6 +33,7 @@ MAX_ELEMENTS_PER_PAGE = 500
 MAX_LINKS_PER_PAGE = 250
 
 
+@lru_cache(maxsize=128)
 def public_host(host: str) -> bool:
     host = (host or "").lower().rstrip(".")
     if not host or host == "localhost" or host.endswith((".localhost", ".local")):
@@ -150,7 +152,7 @@ async def page_snapshot(page) -> dict:
         if (el.getAttribute('data-testid')) locatorHints.push({strategy: 'test_id', value: el.getAttribute('data-testid')});
         if (el.id) locatorHints.push({strategy: 'id', value: el.id});
         const item = {
-          index, tag, role, type: el.getAttribute('type') || '',
+          index, tag, role, type: el.getAttribute('type') || (tag === 'button' ? el.type : ''),
           name: accessibleName, text: clean(el.innerText), placeholder: clean(el.getAttribute('placeholder')),
           id: el.id || null, test_id: el.getAttribute('data-testid'),
           name_attr: el.getAttribute('name'), href, locator_hints: locatorHints,
@@ -339,7 +341,7 @@ async def explore(session_id: str) -> dict:
                               tag: el.tagName.toLowerCase(),
                               role: el.getAttribute('role') || '',
                               name: (el.getAttribute('aria-label') || el.innerText || el.title || '').replace(/\\s+/g,' ').trim().slice(0,180),
-                              type: el.getAttribute('type') || '',
+                              type: el.getAttribute('type') || (el.tagName.toLowerCase() === 'button' ? el.type : ''),
                               expanded: el.getAttribute('aria-expanded'),
                               selected: el.getAttribute('aria-selected')
                             })""")
