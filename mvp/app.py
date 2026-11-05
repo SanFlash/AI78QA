@@ -5,6 +5,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urldefrag
+from xml.etree import ElementTree
 
 from flask import Flask, render_template, request
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -98,6 +99,52 @@ def extract_discovery_links(page) -> list[dict]:
       for (const el of document.querySelectorAll('form[action]')) add(el.action, el.getAttribute('aria-label') || 'Form destination', 'form-action');
       return [...out.values()];
     }""")
+
+
+def discover_sitemap_urls(page, start_url: str, limit: int = 2000) -> list[str]:
+    """Read same-origin sitemap declarations and seed additional crawl routes."""
+    origin = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
+    sitemap_candidates = [urljoin(origin, "/sitemap.xml")]
+    try:
+        response = page.request.get(urljoin(origin, "/robots.txt"), timeout=10000)
+        if response.ok:
+            for line in response.text().splitlines():
+                if line.strip().lower().startswith("sitemap:"):
+                    candidate = line.split(":", 1)[1].strip()
+                    if candidate and same_origin(start_url, candidate):
+                        sitemap_candidates.insert(0, candidate)
+    except Exception:
+        pass
+
+    found = []
+    seen_maps = set()
+    while sitemap_candidates and len(found) < limit and len(seen_maps) < 12:
+        sitemap_url = sitemap_candidates.pop(0)
+        if sitemap_url in seen_maps or not same_origin(start_url, sitemap_url):
+            continue
+        seen_maps.add(sitemap_url)
+        try:
+            response = page.request.get(sitemap_url, timeout=12000)
+            if not response.ok:
+                continue
+            root = ElementTree.fromstring(response.text())
+            for node in root.iter():
+                tag = node.tag.rsplit("}", 1)[-1].lower()
+                if tag != "loc" or not node.text:
+                    continue
+                candidate = clean_url(node.text.strip())
+                if not candidate:
+                    continue
+                if same_origin(start_url, candidate):
+                    if candidate.lower().endswith(".xml") and len(seen_maps) < 12:
+                        sitemap_candidates.append(candidate)
+                    else:
+                        found.append(candidate)
+                if len(found) >= limit:
+                    break
+        except Exception:
+            continue
+    return list(dict.fromkeys(found))[:limit]
 
 
 def visible_login_form(page) -> bool:
@@ -211,13 +258,14 @@ def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict
         return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
       };
       const label = el => (el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || '').trim().replace(/\\s+/g, ' ').slice(0, 100);
-      const safe = /^(menu|navigation|open menu|close menu|tab|show|view|view details|details|expand|collapse|more|less|filter|sort|accordion|preferences|settings)$/i;
+      const safe = /^(menu|navigation|open menu|close menu|tab|show|view|view details|details|expand|collapse|more|less|filter|sort|accordion|preferences|settings|all|active|completed|pending|overview|profile|products|about|contact|next|previous|back)$/i;
+      const risky = /add to cart|checkout|buy|purchase|pay|delete|remove|submit|save|send|confirm|place order|log ?out|sign ?out|cancel subscription/i;
       const nodes = [...document.querySelectorAll('button,[role="button"],[role="tab"],summary,[aria-expanded="false"]')];
       return nodes.filter(visible).map((el, index) => ({
         index, label: label(el), role: el.getAttribute('role') || el.tagName.toLowerCase(),
         expanded: el.getAttribute('aria-expanded'), disabled: !!el.disabled,
         text: label(el)
-      })).filter(x => !x.disabled && (safe.test(x.label) || /^(menu|tab|button)$/.test(x.role) && safe.test(x.text)));
+      })).filter(x => !x.disabled && !risky.test(x.label) && (x.role === 'tab' || safe.test(x.label) || /^(menu|tab)$/.test(x.role)));
     }""")
     results = []
     original_url = clean_url(page.url or page_url)
@@ -246,7 +294,7 @@ def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict
               expanded: [...document.querySelectorAll('[aria-expanded="true"]')].slice(0,15).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
               visibleText: (document.body.innerText || '').slice(0,3000)
             })""")
-            revealed_links = page.locator("a[href]").evaluate_all("""els => els.map(a => ({text:(a.innerText || a.textContent || '').trim(), href:a.href}))""")
+            revealed_links = extract_discovery_links(page)
             results.append({"control": item["label"], "role": item["role"], "before": before, "after": after,
                             "discovered_links": revealed_links,
                             "observed_change": before != {k: after.get(k) for k in before}})
@@ -422,9 +470,11 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                 if not same_origin(start_url, authenticated_landing_url):
                     raise ValueError("After login, the website redirected outside the starting website origin. Discovery stopped for safety.")
 
-            # Begin from the actual authenticated destination (for example /inventory.html),
-            # not the original login URL. Keep the same browser context and session cookies.
+            # Seed from the authenticated destination and any published same-origin sitemap.
             queue.append(authenticated_landing_url)
+            for sitemap_url in discover_sitemap_urls(page, start_url):
+                if sitemap_url not in queue and sitemap_url not in visited:
+                    queue.append(sitemap_url)
 
             while queue and len(pages) < max_pages:
                 current = clean_url(queue.popleft())
