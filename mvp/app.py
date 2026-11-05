@@ -44,8 +44,20 @@ def wait_for_page(page) -> None:
 
 
 def visible_login_form(page) -> bool:
-    password = page.locator('input[type="password"]:visible')
-    return password.count() > 0
+    """Detect a login form, not merely any password field on the page."""
+    password = page.locator('input[type="password"]:visible').first
+    if not password.count():
+        return False
+    form = password.locator("xpath=ancestor::form[1]")
+    if form.count():
+        try:
+            return form.locator('button[type="submit"], input[type="submit"], button').count() > 0
+        except Exception:
+            pass
+    # Some SPA login pages do not wrap fields in a form.
+    return find_username_field(page) is not None or page.locator(
+        'button:has-text("Login"), button:has-text("Log in"), button:has-text("Sign in")'
+    ).count() > 0
 
 
 def locate_login_page(page, start_url: str) -> str | None:
@@ -82,8 +94,10 @@ def locate_login_page(page, start_url: str) -> str | None:
 
 
 def inspect_page(page, url: str) -> dict:
-    page.goto(url, wait_until="domcontentloaded", timeout=25000)
-    wait_for_page(page)
+    # Do not reload the authenticated landing page: retain the live post-login state.
+    if clean_url(page.url) != clean_url(url):
+        page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        wait_for_page(page)
 
     data = page.evaluate("""() => {
       const text = el => (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 180);
@@ -256,9 +270,10 @@ def save_screenshot(page, filename: str) -> None:
 
 def run_scan(start_url: str, max_pages: int, username: str = "", password: str = "") -> dict:
     visited = set()
-    queue = deque([start_url])
+    queue = deque()
     pages = []
     errors = []
+    authenticated_landing_url = start_url
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -270,15 +285,20 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                 if not password:
                     return {"login_required": True, "login_url": login_url, "target": start_url}
                 submit_login(page, username, password)
-                if visible_login_form(page) and not authenticated_indicators(page):
-                    raise ValueError(
-                        "The website still shows its login form. Complete any additional authentication step or check the site's login message."
-                    )
-                # Continue from the authenticated page first; the crawler will follow same-origin links from here.
                 wait_for_page(page)
+                if visible_login_form(page):
+                    feedback = login_feedback(page)
+                    raise ValueError(
+                        f"Login was not completed. {feedback or 'The login form is still displayed. Check the credentials or complete any additional authentication step.'}"
+                    )
+                authenticated_landing_url = clean_url(page.url)
+                if not same_origin(start_url, authenticated_landing_url):
+                    raise ValueError("After login, the website redirected outside the starting website origin. Discovery stopped for safety.")
 
-            # The authenticated browser context is reused for every discovered page,
-            # but credentials and browser state are never written to disk or reports.
+            # Begin from the actual authenticated destination (for example /inventory.html),
+            # not the original login URL. Keep the same browser context and session cookies.
+            queue.append(authenticated_landing_url)
+
             while queue and len(pages) < max_pages:
                 current = clean_url(queue.popleft())
                 if current in visited:
@@ -289,7 +309,7 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                 try:
                     result = inspect_page(page, current)
                     if visible_login_form(page):
-                        errors.append({"url": current, "error": "Authentication required again or the session expired."})
+                        errors.append({"url": current, "error": "This page redirected to a login form. The session may have expired or this area requires another permission."})
                         continue
 
                     screenshot_name = f"page_{len(pages) + 1}.png"
