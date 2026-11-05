@@ -48,6 +48,39 @@ def visible_login_form(page) -> bool:
     return password.count() > 0
 
 
+def locate_login_page(page, start_url: str) -> str | None:
+    """Check the start page, then a few same-origin sign-in links for a password form."""
+    page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
+    wait_for_page(page)
+    if visible_login_form(page):
+        return page.url
+
+    candidates = page.locator("a[href]").evaluate_all("""links => links.map(a => ({
+      href: a.href,
+      text: (a.innerText || a.textContent || '').trim()
+    }))""")
+    seen = set()
+    for item in candidates:
+        href = clean_url(item.get("href", ""))
+        label = f"{item.get('text', '')} {href}".lower()
+        if not any(term in label for term in ("login", "log-in", "sign in", "signin", "my-account")):
+            continue
+        if "logout" in label or href in seen or not same_origin(start_url, href):
+            continue
+        seen.add(href)
+        try:
+            page.goto(href, wait_until="domcontentloaded", timeout=15000)
+            wait_for_page(page)
+            if visible_login_form(page):
+                return page.url
+        except Exception:
+            continue
+
+    page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
+    wait_for_page(page)
+    return None
+
+
 def inspect_page(page, url: str) -> dict:
     page.goto(url, wait_until="domcontentloaded", timeout=25000)
     wait_for_page(page)
@@ -163,17 +196,17 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
         context = browser.new_context(ignore_https_errors=True, viewport={"width": 1440, "height": 900})
         page = context.new_page()
         try:
-            page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
-            wait_for_page(page)
-
-            if visible_login_form(page):
+            login_url = locate_login_page(page, start_url)
+            if login_url:
                 if not password:
-                    return {"login_required": True, "login_url": page.url, "target": start_url}
+                    return {"login_required": True, "login_url": login_url, "target": start_url}
                 submit_login(page, username, password)
                 if visible_login_form(page):
                     raise ValueError(
                         "Login was not completed. Check the credentials, or this site may require an OTP, CAPTCHA, SSO, or a multi-step login that needs manual handling."
                     )
+                page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
+                wait_for_page(page)
 
             # The authenticated browser context is reused for every discovered page,
             # but credentials and browser state are never written to disk or reports.
