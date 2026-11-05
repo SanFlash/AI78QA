@@ -28,7 +28,7 @@ Next.js, TypeScript, FastAPI, PostgreSQL, Redis, SQLAlchemy, Alembic, Celery, Pl
 **Windows (PowerShell):**
 
 ```powershell
-.scripts\start-local.ps1
+.\scripts\start-local.ps1
 ```
 
 The startup script checks Docker Engine, creates a local `.env` with random secrets if needed, validates the Compose configuration, builds the images, starts the services, and waits for API health.
@@ -47,7 +47,7 @@ Open:
 
 The web dashboard uses the same-origin `/api/ai78qa` proxy. The local stack includes PostgreSQL, Redis, FastAPI and the Playwright worker. Alembic migrations run before the API starts, and the worker waits for API health before consuming jobs.
 
-To stop without deleting your data, run `.scripts\stop-local.ps1` on Windows or `docker compose --env-file .env -f infra/docker-compose.yml down` elsewhere. To inspect failures, run `.scripts\diagnose-local.ps1`. Removing volumes requires an explicit confirmation because it permanently deletes local sessions and observations.
+To stop without deleting your data, run `.\scripts\stop-local.ps1` on Windows or `docker compose --env-file .env -f infra/docker-compose.yml down` elsewhere. To inspect failures, run `.\scripts\diagnose-local.ps1`. Removing volumes requires an explicit confirmation because it permanently deletes local sessions and observations.
 
 The SauceDemo starter website is seeded automatically. In Training Lab, select SauceDemo and start an observe-only exploration. No LLM key is required for deterministic crawling.
 
