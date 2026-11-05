@@ -36,7 +36,7 @@ The control plane can be opened without an LLM key. Live registration and explor
 
 ## Vercel deployment boundary
 
-Vercel hosts the Next.js web/control plane. Browser automation, long-running discovery, ML training and Celery workers run in a separate container service. Configure `NEXT_PUBLIC_API_BASE_URL` on Vercel to point to the deployed API. Configure `DATABASE_URL`, `REDIS_URL`, object storage and provider secrets only in the backend/worker environment. Do not put backend secrets in `NEXT_PUBLIC_*` variables.
+Vercel hosts the Next.js control plane. Browser automation and Celery workers run in separate containers. The browser talks to the same-origin `/api/ai78qa` proxy; the proxy injects `AI78QA_API_KEY` server-side and forwards to `AI78QA_API_URL`. Set `NEXT_PUBLIC_API_BASE_URL=/api/ai78qa` in the Vercel build environment. On the API service set `APP_ENV=production`, `API_ACCESS_KEY`, `DATABASE_URL`, and `REDIS_URL`. Set the same key as Vercel's server-only `AI78QA_API_KEY`. Never expose it through a `NEXT_PUBLIC_*` variable. Keep the Vercel project protected by SSO until proper user identity and tenant isolation are implemented.
 
 ## Security defaults
 
