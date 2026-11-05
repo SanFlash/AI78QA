@@ -34,8 +34,25 @@
         <button type="submit">Start discovery</button>
       </div>
     </form>
-    <p class="notice">Safety: the crawler stays on the starting website's origin. It observes pages but does not submit forms, log in, purchase items or click destructive controls. Use only websites you are authorized to test.</p>
+    <p class="notice">Safety: the crawler stays on the starting website's origin. It observes pages and does not execute purchases, messages or destructive actions. If it detects a standard login form, it will ask for credentials before continuing. Use only websites you are authorized to test.</p>
   </section>
+  {% if login_required %}
+  <section class="panel">
+    <h2 style="margin-top:0">Login required — continue discovery</h2>
+    <p class="muted">AI78QA detected a password field on this website. Enter a test account's credentials to continue exploring pages behind the login.</p>
+    <p class="small">Detected login page: {{login_url}}</p>
+    <form method="post" action="/scan-authenticated" autocomplete="off">
+      <input type="hidden" name="url" value="{{target}}">
+      <input type="hidden" name="max_pages" value="{{max_pages}}">
+      <div style="display:grid;gap:12px;max-width:560px">
+        <div><label for="username">Username or email</label><input id="username" name="username" type="text" autocomplete="username" placeholder="Enter test username or email"></div>
+        <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Enter test password"></div>
+        <button type="submit">Authenticate and continue discovery</button>
+      </div>
+    </form>
+    <p class="notice">Credentials are used only for this scan, are not saved in reports or browser storage, and are discarded when the scan finishes. Screenshots mask input fields, but may still show other account data. Use a dedicated test account. Standard username/password forms are supported; OTP, CAPTCHA, SSO and multi-step login may require a separate manual workflow.</p>
+  </section>
+  {% endif %}
   {% if report %}
   <section class="panel">
     <h2 style="margin-top:0">Discovery summary</h2>
