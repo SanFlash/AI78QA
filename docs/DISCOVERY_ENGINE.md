@@ -11,7 +11,7 @@ AI78QA discovery is a bounded, evidence-first crawl—not a link checker.
 5. Records each element independently with its page and session provenance, including resilient locator hints, form constraints, select options, tables and page landmarks.
 6. Safely exercises only low-risk UI affordances (tabs, expanded/collapsed controls, disclosure summaries, and controls with navigation/presentation semantics such as menu, open, view, expand, filter or sort).
 7. Compares before/after state fingerprints and records observed transitions. Newly revealed links are added to the crawl queue. Route discovery edges and per-run progress are exposed to the UI.
-8. Captures browser console errors and failed requests, bounded to a small sample. Page and changed-state screenshots are saved as compressed JPEG evidence artifacts in PostgreSQL (maximum 2 MB per image) when masking styles can be applied; the API serves them by session-scoped filename. A local shared-volume fallback is retained for older artifacts.
+8. Captures browser console errors and failed requests, bounded to a small sample. Page and changed-state screenshots are saved as compressed JPEG evidence artifacts in PostgreSQL (maximum 750 KB per image) when masking styles can be applied; the API serves them by session-scoped filename. A local shared-volume fallback is retained for older artifacts.
 9. Stores raw observations as unverified. The ML pipeline must not treat them as labels.
 
 ## API read models
