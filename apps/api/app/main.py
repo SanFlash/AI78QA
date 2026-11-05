@@ -138,7 +138,8 @@ def get_discovery_graph(session_id: str, db: Session = Depends(get_db)):
                 "discovered_from": features.get("discovered_from"),
                 "headings": features.get("headings", []),
                 "forms": features.get("forms", []),
-                "element_count": features.get("element_count", 0),\n                "evidence_file": features.get("evidence_file"),
+                "element_count": features.get("element_count", 0),
+                "evidence_file": features.get("evidence_file"),
             }
         elif features.get("kind") == "interaction_transition":
             transitions.append({
