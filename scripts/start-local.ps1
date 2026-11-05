@@ -22,11 +22,22 @@ function New-LocalSecret {
 
 if (-not (Test-Path ".env")) {
   $envText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot ".env.example"))
+} else {
+  $envText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot ".env"))
+}
+$originalEnvText = $envText
+if ($envText.Contains("replace-with-a-long-random-value")) {
   $envText = $envText.Replace("replace-with-a-long-random-value", (New-LocalSecret))
+}
+if ($envText.Contains("replace-with-a-strong-local-password")) {
   $envText = $envText.Replace("replace-with-a-strong-local-password", (New-LocalSecret))
+}
+if ($envText.Contains("local-development-only")) {
   $envText = $envText.Replace("local-development-only", (New-LocalSecret))
+}
+if ($envText -ne $originalEnvText -or -not (Test-Path ".env")) {
   [System.IO.File]::WriteAllText((Join-Path $RepoRoot ".env"), $envText, [System.Text.UTF8Encoding]::new($false))
-  Write-Host "Created .env with random local-only secrets."
+  Write-Host "Created or secured .env with random local-only secrets."
 }
 
 $ComposeArgs = @("--env-file", ".env", "-f", "infra/docker-compose.yml")
@@ -54,9 +65,34 @@ if (-not $healthy) {
 }
 
 Write-Host ""
-Write-Host "AI78QA is running:"
+Write-Host "Checking the dashboard-to-API proxy..."
+$proxyReady = $false
+for ($i = 0; $i -lt 30; $i++) {
+  try {
+    $null = Invoke-RestMethod -Uri "http://localhost:3000/api/ai78qa/training/websites" -TimeoutSec 3
+    $proxyReady = $true
+    break
+  } catch {}
+  Start-Sleep -Seconds 2
+}
+if (-not $proxyReady) {
+  Write-Warning "The dashboard/API proxy did not respond. Run scripts/diagnose-local.ps1."
+  docker compose @ComposeArgs logs --tail 80 web api worker
+  exit 1
+}
+
+$runningServices = docker compose @ComposeArgs ps --status running --services
+if ($runningServices -notcontains "worker") {
+  Write-Warning "The Playwright worker is not running. Run scripts/diagnose-local.ps1."
+  docker compose @ComposeArgs logs --tail 100 worker
+  exit 1
+}
+
+Write-Host ""
+Write-Host "AI78QA local stack is healthy:"
 Write-Host "  Dashboard : http://localhost:3000"
 Write-Host "  API docs  : http://localhost:8000/docs"
 Write-Host "  API health: http://localhost:8000/health"
+Write-Host "  Worker    : running (Celery / Playwright)"
 Write-Host ""
 Write-Host "The SauceDemo starter website is seeded. Open Training Lab and start an observe-only exploration."
