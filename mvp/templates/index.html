@@ -25,12 +25,12 @@
   <header class="top"><div class="logo">78</div><div><h1>AI78QA</h1><div class="muted">Website discovery · Lightweight MVP</div></div></header>
   <section class="panel">
     <h2 style="margin-top:0">Explore a website</h2>
-    <p class="muted">Enter a URL and discover its pages, links, forms, fields, buttons and page structure.</p>
+    <p class="muted">Crawl reachable pages and inspect navigation, links, forms, controls, fields, tables, screenshots and network activity.</p>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="post" action="/scan">
       <div class="controls">
         <div><label for="url">Website URL</label><input id="url" name="url" type="url" placeholder="https://example.com" required value="{{ request.form.get('url','') }}"></div>
-        <div><label for="max_pages">Maximum pages</label><select id="max_pages" name="max_pages">{% for n in [3,5,10,15] %}<option value="{{n}}" {% if request.form.get('max_pages','5')|int == n %}selected{% endif %}>{{n}} pages</option>{% endfor %}</select></div>
+        <div><label for="max_pages">Maximum pages (up to 500)</label><select id="max_pages" name="max_pages">{% for n in [25,50,100,250,500] %}<option value="{{n}}" {% if request.form.get('max_pages','100')|int == n %}selected{% endif %}>{{n}} pages</option>{% endfor %}</select></div>
         <button type="submit">Start discovery</button>
       </div>
     </form>
@@ -73,6 +73,7 @@
           <span class="chip">{{page.tables|length}} tables</span><span class="chip">{{page.interactive_exploration|length}} interactions explored</span><span class="chip">{{page.api_requests|length}} API calls observed</span>
         </div>
         {% if page.interactive_exploration %}<div class="detail"><b>Safe interactions explored:</b> {% for action in page.interactive_exploration[:10] %}{{action.control or "Unnamed control"}}{% if action.observed_change %} (state changed){% else %} (no clear change){% endif %}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
+        {% if page.links %}<details class="detail"><summary>View discovered links ({{page.links|length}})</summary><ul>{% for link in page.links %}<li><a href="{{link.href}}" target="_blank" rel="noreferrer">{{link.text or link.href}}</a></li>{% endfor %}</ul></details>{% endif %}
         {% if page.headings %}<div class="detail"><b>Headings:</b> {{page.headings|join(' · ')}}</div>{% endif %}
         {% if page.fields %}<div class="detail"><b>Fields:</b> {% for field in page.fields[:12] %}{{field.tag}}{% if field.type %} ({{field.type}}){% endif %} — {{field.name or field.id or field.placeholder or field.ariaLabel or 'unnamed'}}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
         {% if page.screenshot %}<div class="detail"><a href="/reports/{{page.screenshot}}" target="_blank">Open screenshot</a></div>{% endif %}
