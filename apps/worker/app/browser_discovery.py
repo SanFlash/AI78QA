@@ -297,6 +297,7 @@ async def explore(session_id: str) -> dict:
                         element_type="page_snapshot", semantic_name=snapshot["title"] or current_url,
                         features={"kind": "page_snapshot", "page_key": page_key, "description": snapshot["description"],
                                   "headings": snapshot["headings"], "forms": snapshot["forms"],
+                                  "tables": snapshot["tables"], "landmarks": snapshot["landmarks"],
                                   "body_text": snapshot["body_text"], "element_count": len(snapshot["elements"]),
                                   "discovered_from": discovered_from, "depth": depth,
                                   "evidence_file": page_evidence_name},
