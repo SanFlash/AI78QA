@@ -62,6 +62,7 @@
       <div class="stat"><span class="muted">Total forms</span><strong>{{report.pages|map(attribute='forms')|map('length')|sum}}</strong></div>
     </div>
     <p class="small">Target: {{report.target}} · {{report.created_at}}</p>
+    {% if report.crawl_limit_reached %}<div class="error">The selected page limit was reached. {{report.unvisited_urls_remaining|length}} queued URLs remain in the JSON report. Run another scan with a higher page limit for broader coverage.</div>{% else %}<p class="small">The crawl queue was exhausted before reaching the selected page limit.</p>{% endif %}
     <p><a href="{{url_for('download_report', filename=report.report_file)}}">Download JSON report</a> · <a href="{{url_for('download_report', filename=report.document_file)}}">Download detailed discovery document</a></p>
     {% for page in report.pages %}
       <article class="page">
