@@ -384,6 +384,12 @@ async def explore(session_id: str) -> dict:
                             if before_key != after_key and evidence_enabled:
                                 candidate_evidence_name = f"state-{interaction_count + 1:04d}.png"
                                 try:
+                                    await page.add_style_tag(content="""
+                                      input, textarea, select, [type=password], [autocomplete*=email],
+                                      [autocomplete*=tel], [autocomplete*=cc-], [data-private] {
+                                        filter: blur(8px) !important; color: transparent !important; text-shadow: none !important;
+                                      }
+                                    """)
                                     await page.screenshot(path=str(evidence_root / candidate_evidence_name), full_page=False, animations="disabled")
                                     transition_evidence_name = candidate_evidence_name
                                 except Exception:
