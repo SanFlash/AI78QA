@@ -7,14 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from app.config import settings
-from app.database import Base, engine, get_db
+from app.database import get_db
 from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent, Observation
 from app.schemas import WebsiteCreate, WebsiteRead, SessionCreate, SessionRead, HealthRead
 from app.security import validate_target_url, UnsafeTarget
 from celery import Celery
 from app.seed import seed_demo_website
 
-Base.metadata.create_all(bind=engine)
 seed_demo_website()
 queue = Celery("ai78qa-api", broker=settings.redis_url, backend=settings.redis_url)
 app = FastAPI(title="AI78QA API", version="0.1.0", description="Autonomous QA and Training Lab API")
