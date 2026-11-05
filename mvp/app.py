@@ -531,6 +531,8 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
         "authenticated_session": bool(password),
         "pages_scanned": len(pages),
         "errors_count": len(errors),
+        "crawl_limit_reached": bool(queue and len(pages) >= max_pages),
+        "unvisited_urls_remaining": list(queue)[:100],
         "pages": pages,
         "errors": errors,
         "observed_same_origin_requests": observed_requests,
@@ -545,6 +547,8 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
         f"- Target URL: {start_url}",
         f"- Generated (UTC): {report['created_at']}",
         f"- Pages discovered: {len(pages)} / configured limit {max_pages}",
+        f"- Crawl limit reached: {'Yes' if report['crawl_limit_reached'] else 'No'}",
+        f"- Remaining queued URLs (first 100): {len(report['unvisited_urls_remaining'])}",
         f"- Errors: {len(errors)}",
         f"- Same-origin requests observed: {len(observed_requests)}",
         f"- API-like endpoints: {len(report['api_endpoints'])}", "",
@@ -592,7 +596,7 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
     lines += ["", "## Crawl errors and inaccessible pages", ""]
     lines += [f"- {x.get('url')}: {x.get('error')}" for x in errors] or ["- No crawl errors."]
     lines += ["", "## Crawl limitations", "",
-              f"- The crawl stops after {max_pages} pages. Increase the configured limit if the report says the limit was reached.",
+              f"- The crawl stops after {max_pages} pages. Crawl limit reached: {'Yes' if report['crawl_limit_reached'] else 'No'}. Remaining queued URLs are included in the JSON report.",
               "- Only same-origin destinations are followed. External links are recorded but not crawled.",
               "- Safe interaction exploration does not submit business forms, add items to carts, make payments, send messages, delete records, or log out.",
               "- A page that requires a unique workflow, OTP, CAPTCHA, SSO, or user-specific state may need manual assistance.",
