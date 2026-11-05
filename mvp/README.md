@@ -30,6 +30,7 @@ py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python -m playwright install chromium
+python -m py_compile app.py
 python app.py
 ```
 
@@ -37,6 +38,10 @@ python app.py
 
 - URL-based website discovery
 - Same-origin breadth-first page crawling (up to 500 pages per scan; choose 25, 50, 100, 250 or 500)
+- Resilient browser navigation: waits for the response to commit, treats DOM/load/network-idle as best-effort, and retries transient navigation failures
+- Additional route discovery from `robots.txt` sitemap declarations and same-origin XML sitemaps
+- SPA route hints from common `data-href`, `data-url`, `data-to`, and router-link attributes
+- Per-page network request observations rather than repeating the entire scan's request list on every page
 - Page titles and headings
 - Links, buttons, input fields, dropdown options and forms
 - Table headers and page landmarks
@@ -57,8 +62,9 @@ python app.py
 - Distinguishes a real login form from an arbitrary password field to reduce false session-expiry errors
 - Masks input and textarea fields in screenshots (other account-page content may still be visible)
 - No application form submission or destructive business interactions (purchases, payments, sending messages, deleting records, or logout)
-- Safe UI exploration is heuristic and does not guarantee every control or business workflow is covered
-- Crawling is limited to 500 pages per run; external domains are recorded but not crawled
+- Safe UI exploration is heuristic and does not guarantee every control or business workflow is covered; it explores tabs and a conservative set of low-risk controls only
+- Pages exposed only after complex user journeys, hover-only menus, canvas interactions, inaccessible JavaScript handlers, or application-specific state changes may not be discovered automatically
+- Crawling is limited to 500 pages per run; external domains are recorded but not crawled. This is not an unlimited or mathematically exhaustive crawl
 - API discovery is passive: requests are observed, not replayed, fuzzed, or attacked
 - No AI-generated test cases yet
 - No automated pass/fail assertions
