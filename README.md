@@ -31,7 +31,7 @@ Next.js, TypeScript, FastAPI, PostgreSQL, Redis, SQLAlchemy, Alembic, Celery, Pl
 4. Web: http://localhost:3000
 5. API docs: http://localhost:8000/docs
 
-The initial UI works without an LLM key using deterministic baseline logic. Add a provider key only when you configure one.
+The control plane can be opened without an LLM key. Live registration and exploration require the API and worker to be deployed and the API base URL configured in the workspace. No model is promoted by default.
 
 ## Vercel deployment boundary
 
@@ -47,4 +47,4 @@ Vercel hosts the Next.js web/control plane. Browser automation, long-running dis
 
 ## Status
 
-This repository contains the initial foundation scaffold. The Training Lab workflow and browser worker are being expanded in milestones. ML model performance must be measured on held-out websites before a model is described as transfer-ready.
+The current discovery worker performs bounded same-host crawling, inventories forms and UI elements, safely explores selected menu/tab/disclosure controls, records before/after UI state transitions, and exposes page/transition read APIs. See [Deep Browser Discovery](docs/DISCOVERY_ENGINE.md). The web build and Python checks are wired into GitHub Actions. This is a working discovery foundation—not yet a full autonomous QA suite: authenticated browser sessions, durable screenshots/traces, user-approved business transactions, cross-browser runs, full API testing, and production-grade identity/tenant isolation remain subsequent milestones. ML model performance must be measured on held-out websites before a model is described as transfer-ready.
