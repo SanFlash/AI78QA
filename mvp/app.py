@@ -36,11 +36,68 @@ def clean_url(url: str) -> str:
     return urldefrag(url)[0]
 
 
+def goto_resilient(page, url: str, timeout_ms: int = 45000, retries: int = 2):
+    """Navigate without requiring every resource to finish before discovery starts."""
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            response = page.goto(url, wait_until="commit", timeout=timeout_ms)
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except PlaywrightTimeoutError:
+                pass
+            try:
+                page.wait_for_load_state("load", timeout=2500)
+            except PlaywrightTimeoutError:
+                pass
+            wait_for_page(page)
+            return response
+        except Exception as exc:
+            last_error = exc
+            try:
+                current = clean_url(page.url)
+                ready = page.evaluate("() => document.readyState") if current else "loading"
+                if current == clean_url(url) and ready in {"interactive", "complete"}:
+                    return None
+            except Exception:
+                pass
+            if attempt < retries:
+                try:
+                    page.wait_for_timeout(700 * (attempt + 1))
+                except Exception:
+                    pass
+    raise last_error
+
+
 def wait_for_page(page) -> None:
+    # networkidle is a short settling hint, never a navigation gate.
     try:
-        page.wait_for_load_state("networkidle", timeout=2500)
+        page.wait_for_load_state("networkidle", timeout=1200)
     except PlaywrightTimeoutError:
         pass
+
+
+def extract_discovery_links(page) -> list[dict]:
+    """Collect anchors and common client-side router destination attributes."""
+    return page.evaluate("""() => {
+      const out = new Map();
+      const add = (raw, text, source) => {
+        if (!raw) return;
+        try {
+          const url = new URL(raw, location.href);
+          if (!['http:', 'https:'].includes(url.protocol)) return;
+          const key = url.href.split('#')[0];
+          if (!out.has(key)) out.set(key, {text: (text || '').trim().replace(/\\s+/g, ' ').slice(0,180), href: key, source});
+        } catch (_) {}
+      };
+      for (const el of document.querySelectorAll('a[href],area[href]')) add(el.href, el.innerText || el.textContent, 'anchor');
+      for (const el of document.querySelectorAll('[data-href],[data-url],[data-to],[routerlink],[ng-reflect-router-link]')) {
+        add(el.getAttribute('data-href') || el.getAttribute('data-url') || el.getAttribute('data-to') || el.getAttribute('routerlink') || el.getAttribute('ng-reflect-router-link'),
+            el.innerText || el.textContent || el.getAttribute('aria-label'), 'router-attribute');
+      }
+      for (const el of document.querySelectorAll('form[action]')) add(el.action, el.getAttribute('aria-label') || 'Form destination', 'form-action');
+      return [...out.values()];
+    }""")
 
 
 def visible_login_form(page) -> bool:
@@ -62,7 +119,7 @@ def visible_login_form(page) -> bool:
 
 def locate_login_page(page, start_url: str) -> str | None:
     """Check the start page, then a few same-origin sign-in links for a password form."""
-    page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
+    goto_resilient(page, start_url)
     wait_for_page(page)
     if visible_login_form(page):
         return page.url
@@ -81,14 +138,14 @@ def locate_login_page(page, start_url: str) -> str | None:
             continue
         seen.add(href)
         try:
-            page.goto(href, wait_until="domcontentloaded", timeout=15000)
+            goto_resilient(page, href, timeout_ms=30000, retries=1)
             wait_for_page(page)
             if visible_login_form(page):
                 return page.url
         except Exception:
             continue
 
-    page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
+    goto_resilient(page, start_url)
     wait_for_page(page)
     return None
 
@@ -96,7 +153,7 @@ def locate_login_page(page, start_url: str) -> str | None:
 def inspect_page(page, url: str) -> dict:
     # Do not reload the authenticated landing page: retain the live post-login state.
     if clean_url(page.url) != clean_url(url):
-        page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        goto_resilient(page, url)
         wait_for_page(page)
 
     data = page.evaluate("""() => {
@@ -135,6 +192,7 @@ def inspect_page(page, url: str) -> dict:
           .slice(0, 30).map(el => ({tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || '', label: el.getAttribute('aria-label') || ''}))
       };
     }""")
+    data["links"] = extract_discovery_links(page)
     data["url"] = page.url
     data["screenshot"] = ""
     return data
@@ -194,13 +252,13 @@ def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict
                             "observed_change": before != {k: after.get(k) for k in before}})
             # Reload the same-origin page to restore a predictable state, retaining cookies.
             if clean_url(page.url) != original_url or before != {key: after.get(key) for key in before}:
-                page.goto(original_url, wait_until="domcontentloaded", timeout=20000)
+                goto_resilient(page, original_url, timeout_ms=30000, retries=1)
                 wait_for_page(page)
         except Exception as exc:
             results.append({"control": item.get("label", ""), "error": str(exc)[:180]})
             try:
                 if clean_url(page.url) != original_url:
-                    page.goto(original_url, wait_until="domcontentloaded", timeout=20000)
+                    goto_resilient(page, original_url, timeout_ms=30000, retries=1)
                     wait_for_page(page)
             except Exception:
                 break
@@ -376,6 +434,7 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                 if not same_origin(start_url, current):
                     continue
                 try:
+                    request_start_index = len(observed_requests)
                     result = inspect_page(page, current)
                     if visible_login_form(page):
                         errors.append({"url": current, "error": "This page redirected to a login form. The session may have expired or this area requires another permission."})
@@ -390,7 +449,9 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                             candidate = clean_url(urljoin(current, revealed.get("href", "")))
                             if candidate and same_origin(start_url, candidate) and candidate not in visited and candidate not in queue:
                                 queue.append(candidate)
-                    result["api_requests"] = [r for r in observed_requests if any(token in r["url"].lower() for token in ("/api/", "/graphql", "/rpc/", "/ajax/", "/rest/"))]
+                    page_requests = observed_requests[request_start_index:]
+                    result["observed_requests"] = page_requests
+                    result["api_requests"] = [r for r in page_requests if any(token in r["url"].lower() for token in ("/api/", "/graphql", "/rpc/", "/ajax/", "/rest/"))]
                     screenshot_name = f"page_{len(pages) + 1}.png"
                     save_screenshot(page, screenshot_name)
                     result["screenshot"] = screenshot_name
