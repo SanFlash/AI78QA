@@ -1,0 +1,8 @@
+{
+  "name": "@ai78qa/web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {"dev":"next dev -H 0.0.0.0","build":"next build","start":"next start -H 0.0.0.0","lint":"next lint"},
+  "dependencies": {"lucide-react":"^0.468.0","next":"^14.2.21","react":"^18.3.1","react-dom":"^18.3.1"},
+  "devDependencies": {"@types/node":"^22.10.2","@types/react":"^18.3.18","@types/react-dom":"^18.3.5","typescript":"^5.7.2"}
+}
