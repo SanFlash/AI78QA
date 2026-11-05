@@ -140,6 +140,69 @@ def inspect_page(page, url: str) -> dict:
     return data
 
 
+
+def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict]:
+    """Explore low-risk UI controls and record the observed state change.
+
+    This deliberately excludes submit, purchase, delete, save, send, logout,
+    payment and other business-transaction controls.
+    """
+    candidates = page.evaluate("""() => {
+      const visible = el => {
+        const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+      };
+      const label = el => (el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || '').trim().replace(/\\s+/g, ' ').slice(0, 100);
+      const safe = /^(menu|navigation|open menu|close menu|tab|show|view|view details|details|expand|collapse|more|less|filter|sort|accordion|preferences|settings)$/i;
+      const nodes = [...document.querySelectorAll('button,[role="button"],[role="tab"],summary,[aria-expanded="false"]')];
+      return nodes.filter(visible).map((el, index) => ({
+        index, label: label(el), role: el.getAttribute('role') || el.tagName.toLowerCase(),
+        expanded: el.getAttribute('aria-expanded'), disabled: !!el.disabled,
+        text: label(el)
+      })).filter(x => !x.disabled && (safe.test(x.label) || /^(menu|tab|button)$/.test(x.role) && safe.test(x.text)));
+    }""")
+    results = []
+    original_url = clean_url(page.url or page_url)
+    for item in candidates[:limit]:
+        try:
+            before = page.evaluate("""() => ({
+              url: location.href, title: document.title,
+              active: [...document.querySelectorAll('[role="tab"][aria-selected="true"],[aria-current="page"],.active')].slice(0,12).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
+              dialogs: [...document.querySelectorAll('[role="dialog"],dialog[open]')].filter(e => e.getBoundingClientRect().width).map(e => (e.innerText || '').trim().slice(0,500))
+            })""")
+            clicked = page.evaluate("""index => {
+              const visible = el => { const r=el.getBoundingClientRect(),s=getComputedStyle(el); return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none'; };
+              const nodes=[...document.querySelectorAll('button,[role="button"],[role="tab"],summary,[aria-expanded="false"]')].filter(visible);
+              const el=nodes[index]; if (!el || el.disabled) return false;
+              el.click(); return true;
+            }""", item["index"])
+            if not clicked:
+                continue
+            page.wait_for_timeout(350)
+            after = page.evaluate("""() => ({
+              url: location.href, title: document.title,
+              active: [...document.querySelectorAll('[role="tab"][aria-selected="true"],[aria-current="page"],.active')].slice(0,12).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
+              dialogs: [...document.querySelectorAll('[role="dialog"],dialog[open]')].filter(e => e.getBoundingClientRect().width).map(e => (e.innerText || '').trim().slice(0,500)),
+              expanded: [...document.querySelectorAll('[aria-expanded="true"]')].slice(0,15).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
+              visibleText: (document.body.innerText || '').slice(0,1200)
+            })""")
+            results.append({"control": item["label"], "role": item["role"], "before": before, "after": after,
+                            "observed_change": before != {k: after.get(k) for k in before}})
+            # Reload the same-origin page to restore a predictable state, retaining cookies.
+            if clean_url(page.url) != original_url or after != before:
+                page.goto(original_url, wait_until="domcontentloaded", timeout=20000)
+                wait_for_page(page)
+        except Exception as exc:
+            results.append({"control": item.get("label", ""), "error": str(exc)[:180]})
+            try:
+                if clean_url(page.url) != original_url:
+                    page.goto(original_url, wait_until="domcontentloaded", timeout=20000)
+                    wait_for_page(page)
+            except Exception:
+                break
+    return results
+
+
 def find_username_field(page):
     selectors = [
         'input[autocomplete="username"]:visible',
@@ -273,12 +336,14 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
     queue = deque()
     pages = []
     errors = []
+    observed_requests = []
     authenticated_landing_url = start_url
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(ignore_https_errors=True, viewport={"width": 1440, "height": 900})
         page = context.new_page()
+        page.on("request", lambda req: observed_requests.append({"method": req.method, "url": req.url, "resource_type": req.resource_type}) if same_origin(start_url, req.url) and len(observed_requests) < 500 else None)
         try:
             login_url = locate_login_page(page, start_url)
             if login_url:
@@ -312,6 +377,8 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                         errors.append({"url": current, "error": "This page redirected to a login form. The session may have expired or this area requires another permission."})
                         continue
 
+                    result["interactive_exploration"] = explore_safe_interactions(page, result["url"])
+                    result["api_requests"] = [r for r in observed_requests if any(token in r["url"].lower() for token in ("/api/", "/graphql", "/rpc/", "/ajax/", "/rest/"))]
                     screenshot_name = f"page_{len(pages) + 1}.png"
                     save_screenshot(page, screenshot_name)
                     result["screenshot"] = screenshot_name
@@ -335,7 +402,9 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
         "errors_count": len(errors),
         "pages": pages,
         "errors": errors,
-        "scope": "Same-origin discovery. Credentials are transient and are not saved. No destructive controls or business transactions are executed."
+        "observed_same_origin_requests": observed_requests,
+        "api_endpoints": sorted({r["url"] for r in observed_requests if any(token in r["url"].lower() for token in ("/api/", "/graphql", "/rpc/", "/ajax/", "/rest/"))}),
+        "scope": "Same-origin authenticated discovery with safe UI exploration and passive request observation. Credentials are transient and are not saved. Business transactions, form submissions, purchases, messages, deletion, payment and logout actions are not executed."
     }
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     report_path = REPORT_DIR / f"ai78qa_report_{stamp}.json"
