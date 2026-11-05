@@ -1,4 +1,8 @@
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from pathlib import Path
+import os
+import re
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -154,3 +158,17 @@ def get_discovery_graph(session_id: str, db: Session = Depends(get_db)):
             "changed_states": sum(1 for item in transitions if item["state_changed"]),
         },
     }
+
+
+@app.get("/api/v1/training/sessions/{session_id}/evidence/{filename}")
+def get_evidence_file(session_id: str, filename: str, db: Session = Depends(get_db)):
+    session = db.get(TrainingSession, session_id)
+    if not session:
+        raise HTTPException(404, "Session not found.")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\\.png", filename):
+        raise HTTPException(400, "Invalid evidence filename.")
+    root = Path(os.getenv("EVIDENCE_DIR", "/data/evidence")).resolve()
+    target = (root / session_id / filename).resolve()
+    if root not in target.parents or not target.is_file():
+        raise HTTPException(404, "Evidence file not found.")
+    return FileResponse(target, media_type="image/png", filename=filename)
