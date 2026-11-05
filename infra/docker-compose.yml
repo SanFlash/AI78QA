@@ -30,6 +30,9 @@ services:
       DATABASE_URL: postgresql+psycopg://ai78qa:${POSTGRES_PASSWORD:-ai78qa-local-password}@postgres:5432/ai78qa
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: http://localhost:3000
+      EVIDENCE_DIR: /data/evidence
+    volumes:
+      - evidence_data:/data/evidence:ro
     ports: ["8000:8000"]
     depends_on:
       postgres: {condition: service_healthy}
@@ -41,6 +44,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://ai78qa:${POSTGRES_PASSWORD:-ai78qa-local-password}@postgres:5432/ai78qa
       REDIS_URL: redis://redis:6379/0
+      EVIDENCE_DIR: /data/evidence
+    volumes:
+      - evidence_data:/data/evidence
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -58,3 +64,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  evidence_data:
