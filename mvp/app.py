@@ -87,8 +87,11 @@ def extract_discovery_links(page) -> list[dict]:
         try {
           const url = new URL(raw, location.href);
           if (!['http:', 'https:'].includes(url.protocol)) return;
+          const label = (text || '').trim().replace(/\\s+/g, ' ').slice(0,180);
+          const unsafe = /logout|log[- ]?out|sign[- ]?out|delete|remove|checkout|payment|place[- ]?order|unsubscribe|cancel[- ]?subscription/i;
+          if (unsafe.test(label) || unsafe.test(url.pathname)) return;
           const key = url.href.split('#')[0];
-          if (!out.has(key)) out.set(key, {text: (text || '').trim().replace(/\\s+/g, ' ').slice(0,180), href: key, source});
+          if (!out.has(key)) out.set(key, {text: label, href: key, source});
         } catch (_) {}
       };
       for (const el of document.querySelectorAll('a[href],area[href]')) add(el.href, el.innerText || el.textContent, 'anchor');
@@ -96,7 +99,6 @@ def extract_discovery_links(page) -> list[dict]:
         add(el.getAttribute('data-href') || el.getAttribute('data-url') || el.getAttribute('data-to') || el.getAttribute('routerlink') || el.getAttribute('ng-reflect-router-link'),
             el.innerText || el.textContent || el.getAttribute('aria-label'), 'router-attribute');
       }
-      for (const el of document.querySelectorAll('form[action]')) add(el.action, el.getAttribute('aria-label') || 'Form destination', 'form-action');
       return [...out.values()];
     }""")
 
