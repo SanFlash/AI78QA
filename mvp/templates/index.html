@@ -70,8 +70,9 @@
         <div class="chips">
           <span class="chip">{{page.links|length}} links</span><span class="chip">{{page.buttons|length}} buttons</span>
           <span class="chip">{{page.fields|length}} fields</span><span class="chip">{{page.forms|length}} forms</span>
-          <span class="chip">{{page.tables|length}} tables</span>
+          <span class="chip">{{page.tables|length}} tables</span><span class="chip">{{page.interactive_exploration|length}} interactions explored</span><span class="chip">{{page.api_requests|length}} API calls observed</span>
         </div>
+        {% if page.interactive_exploration %}<div class="detail"><b>Safe interactions explored:</b> {% for action in page.interactive_exploration[:10] %}{{action.control or "Unnamed control"}}{% if action.observed_change %} (state changed){% else %} (no clear change){% endif %}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
         {% if page.headings %}<div class="detail"><b>Headings:</b> {{page.headings|join(' · ')}}</div>{% endif %}
         {% if page.fields %}<div class="detail"><b>Fields:</b> {% for field in page.fields[:12] %}{{field.tag}}{% if field.type %} ({{field.type}}){% endif %} — {{field.name or field.id or field.placeholder or field.ariaLabel or 'unnamed'}}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
         {% if page.screenshot %}<div class="detail"><a href="/reports/{{page.screenshot}}" target="_blank">Open screenshot</a></div>{% endif %}
