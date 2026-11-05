@@ -321,6 +321,12 @@ async def explore(session_id: str) -> dict:
 
                     page_count += 1
                     element_count += len(snapshot["elements"])
+                    session.summary = {
+                        "progress": "running", "current_url": current_url,
+                        "pages_discovered": page_count, "elements_observed": element_count,
+                        "interactions_attempted": interaction_count,
+                        "state_transitions_observed": transition_count,
+                    }
                     db.commit()
 
                     # Explore state-changing UI affordances only; never submit forms or activate destructive actions.
@@ -386,6 +392,12 @@ async def explore(session_id: str) -> dict:
                             interaction_count += 1
                             if changed:
                                 transition_count += 1
+                            session.summary = {
+                                "progress": "running", "current_url": before_url,
+                                "pages_discovered": page_count, "elements_observed": element_count,
+                                "interactions_attempted": interaction_count,
+                                "state_transitions_observed": transition_count,
+                            }
                             db.add(Observation(
                                 session_id=session.id, page_url=before_url, page_title=before["title"],
                                 element_type=target.get("role") or target.get("tag") or "control",
