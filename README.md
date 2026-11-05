@@ -68,3 +68,17 @@ Vercel hosts the Next.js control plane. Browser automation and Celery workers ru
 ## Status
 
 The local Docker stack is the supported free-first execution environment. It runs the API, PostgreSQL, Redis, Playwright worker and Next.js dashboard together. The current discovery worker performs bounded same-host crawling, inventories forms and UI elements, safely explores selected menu/tab/disclosure controls, records before/after UI state transitions, and exposes page/transition read APIs. See [Deep Browser Discovery](docs/DISCOVERY_ENGINE.md). The web build and Python checks are wired into GitHub Actions. This is a working discovery foundation—not yet a full autonomous QA suite: authenticated browser sessions, object-storage archival for large-scale evidence and browser traces, user-approved business transactions, cross-browser runs, full API testing, and production-grade identity/tenant isolation remain subsequent milestones. ML model performance must be measured on held-out websites before a model is described as transfer-ready.
+
+
+## Lightweight MVP (recommended first run)
+
+If you do not want Docker or the full multi-service stack, start with the independent lightweight version in `mvp/`. It uses only Flask and Playwright, keeps reports as local JSON files and screenshots, and runs on Windows without PostgreSQL, Redis, Celery or Node.js.
+
+```powershell
+git pull origin main
+cd mvp
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\run.ps1
+```
+
+Open http://127.0.0.1:5000. The first run creates a Python virtual environment, installs the two Python dependencies and downloads Chromium. See [mvp/README.md](mvp/README.md) for details and limitations. The original Docker-based platform remains available separately; it is not required for this MVP.
