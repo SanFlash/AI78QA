@@ -15,7 +15,7 @@ from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from app.database import SessionLocal
-from app.models import TrainingSession, TrainingWebsite, Observation
+from app.models import TrainingSession, TrainingWebsite, Observation, EvidenceArtifact
 
 SAFE_ACTION_WORDS = {"open", "show", "view", "menu", "tab", "expand", "collapse", "filter", "sort", "next", "previous", "details", "more", "less", "toggle", "close", "back", "forward"}
 DANGEROUS_WORDS = {
@@ -284,9 +284,15 @@ async def explore(session_id: str) -> dict:
                             filter: blur(8px) !important; color: transparent !important; text-shadow: none !important;
                           }
                         """)
-                        page_evidence_name = f"page-{page_count + 1:04d}.png"
-                        await page.screenshot(path=str(evidence_root / page_evidence_name), full_page=False, animations="disabled")
-                        evidence_enabled = True
+                        page_evidence_name = f"page-{page_count + 1:04d}.jpg"
+                        await page.screenshot(path=str(evidence_root / page_evidence_name), type="jpeg", quality=70, full_page=False, animations="disabled")
+                        evidence_bytes = (evidence_root / page_evidence_name).read_bytes()
+                        if len(evidence_bytes) <= 2_000_000:
+                            db.add(EvidenceArtifact(session_id=session.id, filename=page_evidence_name, mime_type="image/jpeg", data=evidence_bytes))
+                            evidence_enabled = True
+                        else:
+                            (evidence_root / page_evidence_name).unlink(missing_ok=True)
+                            page_evidence_name = None
                     except Exception:
                         # Do not save an unmasked screenshot or fail the crawl when screenshot capture is unavailable.
                         page_evidence_name = None
@@ -382,7 +388,7 @@ async def explore(session_id: str) -> dict:
                             after_key = stable_hash({"url": after_url, "body": after["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in after["elements"][:100]]})
                             transition_evidence_name = None
                             if before_key != after_key and evidence_enabled:
-                                candidate_evidence_name = f"state-{interaction_count + 1:04d}.png"
+                                candidate_evidence_name = f"state-{interaction_count + 1:04d}.jpg"
                                 try:
                                     await page.add_style_tag(content="""
                                       input, textarea, select, [type=password], [autocomplete*=email],
@@ -390,8 +396,14 @@ async def explore(session_id: str) -> dict:
                                         filter: blur(8px) !important; color: transparent !important; text-shadow: none !important;
                                       }
                                     """)
-                                    await page.screenshot(path=str(evidence_root / candidate_evidence_name), full_page=False, animations="disabled")
-                                    transition_evidence_name = candidate_evidence_name
+                                    await page.screenshot(path=str(evidence_root / candidate_evidence_name), type="jpeg", quality=70, full_page=False, animations="disabled")
+                                    evidence_bytes = (evidence_root / candidate_evidence_name).read_bytes()
+                                    if len(evidence_bytes) <= 2_000_000:
+                                        db.add(EvidenceArtifact(session_id=session.id, filename=candidate_evidence_name, mime_type="image/jpeg", data=evidence_bytes))
+                                        transition_evidence_name = candidate_evidence_name
+                                    else:
+                                        (evidence_root / candidate_evidence_name).unlink(missing_ok=True)
+                                        transition_evidence_name = None
                                 except Exception:
                                     transition_evidence_name = None
                             changed = before_key != after_key
