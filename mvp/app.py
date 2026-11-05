@@ -186,7 +186,7 @@ def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict
               active: [...document.querySelectorAll('[role="tab"][aria-selected="true"],[aria-current="page"],.active')].slice(0,12).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
               dialogs: [...document.querySelectorAll('[role="dialog"],dialog[open]')].filter(e => e.getBoundingClientRect().width).map(e => (e.innerText || '').trim().slice(0,500)),
               expanded: [...document.querySelectorAll('[aria-expanded="true"]')].slice(0,15).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
-              visibleText: (document.body.innerText || '').slice(0,1200)
+              visibleText: (document.body.innerText || '').slice(0,3000)
             })""")
             revealed_links = page.locator("a[href]").evaluate_all("""els => els.map(a => ({text:(a.innerText || a.textContent || '').trim(), href:a.href}))""")
             results.append({"control": item["label"], "role": item["role"], "before": before, "after": after,
@@ -478,7 +478,7 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
               "- Safe interaction exploration does not submit business forms, add items to carts, make payments, send messages, delete records, or log out.",
               "- A page that requires a unique workflow, OTP, CAPTCHA, SSO, or user-specific state may need manual assistance.",
               "- API traffic is observed passively; endpoints are not replayed or attacked.", ""]
-    document_path.write_text("\\n".join(lines), encoding="utf-8")
+    document_path.write_text("\n".join(lines), encoding="utf-8")
     report["document_file"] = document_name
     report_path = REPORT_DIR / f"ai78qa_report_{stamp}.json"
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
