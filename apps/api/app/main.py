@@ -1,8 +1,9 @@
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 import os
 import re
+import hmac
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
@@ -18,6 +19,17 @@ seed_demo_website()
 queue = Celery("ai78qa-api", broker=settings.redis_url, backend=settings.redis_url)
 app = FastAPI(title="AI78QA API", version="0.1.0", description="Autonomous QA and Training Lab API")
 app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+@app.middleware("http")
+async def require_api_access_key(request, call_next):
+    # Local Docker development remains frictionless. Production API traffic must carry
+    # the server-managed key injected by the same-origin Vercel proxy.
+    if settings.app_env.lower() == "production" and request.url.path != "/health":
+        expected = settings.api_access_key
+        supplied = request.headers.get("x-api-key", "")
+        if not expected or not hmac.compare_digest(supplied, expected):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized API request."})
+    return await call_next(request)
 
 @app.get("/health", response_model=HealthRead)
 def health():
