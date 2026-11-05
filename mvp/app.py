@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-import re
-import socket
-import ipaddress
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,12 +36,21 @@ def clean_url(url: str) -> str:
     return urldefrag(url)[0]
 
 
-def inspect_page(page, url: str) -> dict:
-    page.goto(url, wait_until="domcontentloaded", timeout=25000)
+def wait_for_page(page) -> None:
     try:
         page.wait_for_load_state("networkidle", timeout=2500)
     except PlaywrightTimeoutError:
         pass
+
+
+def visible_login_form(page) -> bool:
+    password = page.locator('input[type="password"]:visible')
+    return password.count() > 0
+
+
+def inspect_page(page, url: str) -> dict:
+    page.goto(url, wait_until="domcontentloaded", timeout=25000)
+    wait_for_page(page)
 
     data = page.evaluate("""() => {
       const text = el => (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 180);
@@ -88,7 +93,66 @@ def inspect_page(page, url: str) -> dict:
     return data
 
 
-def run_scan(start_url: str, max_pages: int) -> dict:
+def find_username_field(page):
+    selectors = [
+        'input[autocomplete="username"]:visible',
+        'input[type="email"]:visible',
+        'input[name*="user" i]:visible',
+        'input[id*="user" i]:visible',
+        'input[name*="email" i]:visible',
+        'input[id*="email" i]:visible',
+        'input[type="text"]:visible'
+    ]
+    for selector in selectors:
+        locator = page.locator(selector).first
+        if locator.count():
+            return locator
+    return None
+
+
+def submit_login(page, username: str, password: str) -> None:
+    password_field = page.locator('input[type="password"]:visible').first
+    if not password_field.count():
+        raise ValueError("A visible password field was not found. This login page may require a different authentication flow.")
+
+    username_field = find_username_field(page)
+    if username and username_field is not None:
+        username_field.fill(username)
+    password_field.fill(password)
+
+    submit_selectors = [
+        'button[type="submit"]:visible',
+        'input[type="submit"]:visible',
+        'button:has-text("Log in"):visible',
+        'button:has-text("Login"):visible',
+        'button:has-text("Sign in"):visible',
+        'input[type="button"][value*="login" i]:visible'
+    ]
+    submitted = False
+    for selector in submit_selectors:
+        button = page.locator(selector).first
+        if button.count():
+            button.click(timeout=5000)
+            submitted = True
+            break
+    if not submitted:
+        password_field.press("Enter")
+    wait_for_page(page)
+
+
+def save_screenshot(page, filename: str) -> None:
+    # Hide form values in evidence screenshots. Use dedicated test accounts;
+    # screenshots may still contain other page content from the test account.
+    masks = page.locator("input, textarea").all()
+    page.screenshot(
+        path=str(REPORT_DIR / filename),
+        full_page=True,
+        animations="disabled",
+        mask=masks
+    )
+
+
+def run_scan(start_url: str, max_pages: int, username: str = "", password: str = "") -> dict:
     visited = set()
     queue = deque([start_url])
     pages = []
@@ -98,40 +162,60 @@ def run_scan(start_url: str, max_pages: int) -> dict:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(ignore_https_errors=True, viewport={"width": 1440, "height": 900})
         page = context.new_page()
+        try:
+            page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
+            wait_for_page(page)
 
-        while queue and len(pages) < max_pages:
-            current = clean_url(queue.popleft())
-            if current in visited:
-                continue
-            visited.add(current)
-            if not same_origin(start_url, current):
-                continue
-            try:
-                result = inspect_page(page, current)
-                screenshot_name = f"page_{len(pages) + 1}.png"
-                screenshot_path = REPORT_DIR / screenshot_name
-                page.screenshot(path=str(screenshot_path), full_page=True, animations="disabled")
-                result["screenshot"] = screenshot_name
-                pages.append(result)
-                for link in result["links"]:
-                    candidate = clean_url(urljoin(result["url"], link["href"]))
-                    if same_origin(start_url, candidate) and candidate not in visited and candidate not in queue:
-                        queue.append(candidate)
-            except Exception as exc:
-                errors.append({"url": current, "error": str(exc)[:300]})
+            if visible_login_form(page):
+                if not password:
+                    return {"login_required": True, "login_url": page.url, "target": start_url}
+                submit_login(page, username, password)
+                if visible_login_form(page):
+                    raise ValueError(
+                        "Login was not completed. Check the credentials, or this site may require an OTP, CAPTCHA, SSO, or a multi-step login that needs manual handling."
+                    )
 
-        browser.close()
+            # The authenticated browser context is reused for every discovered page,
+            # but credentials and browser state are never written to disk or reports.
+            while queue and len(pages) < max_pages:
+                current = clean_url(queue.popleft())
+                if current in visited:
+                    continue
+                visited.add(current)
+                if not same_origin(start_url, current):
+                    continue
+                try:
+                    result = inspect_page(page, current)
+                    if visible_login_form(page):
+                        errors.append({"url": current, "error": "Authentication required again or the session expired."})
+                        continue
+
+                    screenshot_name = f"page_{len(pages) + 1}.png"
+                    save_screenshot(page, screenshot_name)
+                    result["screenshot"] = screenshot_name
+                    pages.append(result)
+
+                    for link in result["links"]:
+                        candidate = clean_url(urljoin(result["url"], link["href"]))
+                        if same_origin(start_url, candidate) and candidate not in visited and candidate not in queue:
+                            queue.append(candidate)
+                except Exception as exc:
+                    errors.append({"url": current, "error": str(exc)[:300]})
+        finally:
+            context.close()
+            browser.close()
 
     report = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "target": start_url,
+        "authenticated_session": bool(password),
         "pages_scanned": len(pages),
         "errors_count": len(errors),
         "pages": pages,
         "errors": errors,
-        "scope": "Same-origin discovery only. No forms submitted and no destructive controls clicked."
+        "scope": "Same-origin discovery. Credentials are transient and are not saved. No destructive controls or business transactions are executed."
     }
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     report_path = REPORT_DIR / f"ai78qa_report_{stamp}.json"
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     report["report_file"] = report_path.name
@@ -140,7 +224,7 @@ def run_scan(start_url: str, max_pages: int) -> dict:
 
 @app.get("/")
 def index():
-    return render_template("index.html", report=None, error=None)
+    return render_template("index.html", report=None, error=None, login_required=False)
 
 
 @app.post("/scan")
@@ -153,9 +237,35 @@ def scan():
             max_pages = 5
         max_pages = max(1, min(max_pages, 15))
         report = run_scan(target, max_pages)
-        return render_template("index.html", report=report, error=None)
+        if report.get("login_required"):
+            return render_template(
+                "index.html", report=None, error=None, login_required=True,
+                login_url=report["login_url"], target=target, max_pages=max_pages
+            )
+        return render_template("index.html", report=report, error=None, login_required=False)
     except Exception as exc:
-        return render_template("index.html", report=None, error=str(exc)), 400
+        return render_template("index.html", report=None, error=str(exc), login_required=False), 400
+
+
+@app.post("/scan-authenticated")
+def scan_authenticated():
+    try:
+        target = validate_target(request.form.get("url", ""))
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        if not password:
+            raise ValueError("Enter the password to continue.")
+        try:
+            max_pages = int(request.form.get("max_pages", "5"))
+        except ValueError:
+            max_pages = 5
+        max_pages = max(1, min(max_pages, 15))
+        report = run_scan(target, max_pages, username=username, password=password)
+        if report.get("login_required"):
+            raise ValueError("The website is still requesting authentication. This login flow may need manual handling.")
+        return render_template("index.html", report=report, error=None, login_required=False)
+    except Exception as exc:
+        return render_template("index.html", report=None, error=str(exc), login_required=False), 400
 
 
 @app.get("/reports/<path:filename>")
