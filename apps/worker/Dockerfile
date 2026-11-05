@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/playwright/python:v1.51.0-noble
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY apps/api/pyproject.toml ./pyproject.toml
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . playwright==1.51.0
 COPY apps/api/app ./app
 # Merge worker modules into the shared app package so API models/database and browser worker resolve consistently.
 COPY apps/worker/app/browser_discovery.py ./app/browser_discovery.py
