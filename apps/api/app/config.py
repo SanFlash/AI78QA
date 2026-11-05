@@ -11,6 +11,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
+    def sqlalchemy_database_url(self) -> str:
+        value = self.database_url
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
+
+    @property
     def origins(self) -> list[str]:
         return [value.strip() for value in self.cors_origins.split(",") if value.strip()]
 
