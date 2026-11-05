@@ -5,38 +5,62 @@ services:
       POSTGRES_DB: ai78qa
       POSTGRES_USER: ai78qa
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai78qa-local-password}
-    ports: ["5432:5432"]
-    volumes: [postgres_data:/var/lib/postgresql/data]
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL","pg_isready -U ai78qa -d ai78qa"]
+      test: ["CMD-SHELL", "pg_isready -U ai78qa -d ai78qa"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
-    command: ["redis-server","--appendonly","yes"]
-    ports: ["6379:6379"]
-    volumes: [redis_data:/data]
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
-      test: ["CMD","redis-cli","ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
+    restart: unless-stopped
+
   api:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
+      APP_ENV: development
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-local-only-change-me}
+      API_ACCESS_KEY: ${API_ACCESS_KEY:-local-dev-only-change-this}
       DATABASE_URL: postgresql+psycopg://ai78qa:${POSTGRES_PASSWORD:-ai78qa-local-password}@postgres:5432/ai78qa
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: http://localhost:3000
       EVIDENCE_DIR: /data/evidence
     volumes:
       - evidence_data:/data/evidence:ro
-    ports: ["8000:8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    init: true
+    restart: unless-stopped
+
   worker:
     build:
       context: ..
@@ -48,21 +72,30 @@ services:
     volumes:
       - evidence_data:/data/evidence
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     init: true
     shm_size: 1gb
     restart: unless-stopped
+
   web:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
-    ports: ["3000:3000"]
+        NEXT_PUBLIC_API_BASE_URL: /api/ai78qa
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
-    depends_on: [api]
+      AI78QA_API_URL: http://api:8000
+      AI78QA_API_KEY: ${API_ACCESS_KEY:-local-dev-only-change-this}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
