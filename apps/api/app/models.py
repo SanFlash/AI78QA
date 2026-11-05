@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, JSON, Boolean
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, JSON, Boolean, LargeBinary, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -42,6 +42,7 @@ class TrainingSession(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     website: Mapped[TrainingWebsite] = relationship(back_populates="sessions")
     observations: Mapped[list["Observation"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    evidence: Mapped[list["EvidenceArtifact"]] = relationship(back_populates="session", cascade="all, delete-orphan")
 
 class Observation(Base):
     __tablename__ = "training_observations"
@@ -57,6 +58,19 @@ class Observation(Base):
     source: Mapped[str] = mapped_column(String(32), default="browser_observation")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     session: Mapped[TrainingSession] = relationship(back_populates="observations")
+
+
+class EvidenceArtifact(Base):
+    __tablename__ = "evidence_artifacts"
+    __table_args__ = (UniqueConstraint("session_id", "filename", name="uq_evidence_session_filename"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    session_id: Mapped[str] = mapped_column(ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(160), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(80), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    session: Mapped[TrainingSession] = relationship(back_populates="evidence")
+
 
 class Dataset(Base):
     __tablename__ = "datasets"
