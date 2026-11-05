@@ -248,15 +248,21 @@ async def explore(session_id: str) -> dict:
                     snapshot = scrub_snapshot(await page_snapshot(page), site.base_url, host)
                     evidence_root = Path(os.getenv("EVIDENCE_DIR", "/data/evidence")) / session.id
                     evidence_root.mkdir(parents=True, exist_ok=True)
-                    page_evidence_name = f"page-{page_count + 1:04d}.png"
-                    page_evidence_path = evidence_root / page_evidence_name
-                    await page.add_style_tag(content="""
-                      input, textarea, select, [type=password], [autocomplete*=email],
-                      [autocomplete*=tel], [autocomplete*=cc-], [data-private] {
-                        filter: blur(8px) !important; color: transparent !important; text-shadow: none !important;
-                      }
-                    """)
-                    await page.screenshot(path=str(page_evidence_path), full_page=False, animations="disabled")
+                    page_evidence_name = None
+                    evidence_enabled = False
+                    try:
+                        await page.add_style_tag(content="""
+                          input, textarea, select, [type=password], [autocomplete*=email],
+                          [autocomplete*=tel], [autocomplete*=cc-], [data-private] {
+                            filter: blur(8px) !important; color: transparent !important; text-shadow: none !important;
+                          }
+                        """)
+                        page_evidence_name = f"page-{page_count + 1:04d}.png"
+                        await page.screenshot(path=str(evidence_root / page_evidence_name), full_page=False, animations="disabled")
+                        evidence_enabled = True
+                    except Exception:
+                        # Do not save an unmasked screenshot or fail the crawl when screenshot capture is unavailable.
+                        page_evidence_name = None
                     current_url = canonical_url(page.url, site.base_url, host) or normalized
                     page_key = stable_hash({"url": current_url, "title": snapshot["title"], "headings": snapshot["headings"]})
                     route_inventory.append({"url": current_url, "title": snapshot["title"], "depth": depth, "discovered_from": discovered_from, "page_key": page_key})
@@ -341,9 +347,13 @@ async def explore(session_id: str) -> dict:
                                     queue.append((discovered, depth + 1, after_url))
                             after_key = stable_hash({"url": after_url, "body": after["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in after["elements"][:100]]})
                             transition_evidence_name = None
-                            if before_key != after_key:
-                                transition_evidence_name = f"state-{interaction_count + 1:04d}.png"
-                                await page.screenshot(path=str(evidence_root / transition_evidence_name), full_page=False, animations="disabled")
+                            if before_key != after_key and evidence_enabled:
+                                candidate_evidence_name = f"state-{interaction_count + 1:04d}.png"
+                                try:
+                                    await page.screenshot(path=str(evidence_root / candidate_evidence_name), full_page=False, animations="disabled")
+                                    transition_evidence_name = candidate_evidence_name
+                                except Exception:
+                                    transition_evidence_name = None
                             changed = before_key != after_key
                             interaction_count += 1
                             if changed:
