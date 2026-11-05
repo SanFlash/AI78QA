@@ -8,10 +8,10 @@ AI78QA discovery is a bounded, evidence-first crawl—not a link checker.
 2. Starts an isolated headless Chromium context and blocks requests outside the exact approved hostname.
 3. Crawls same-host anchors breadth-first within the configured page/depth budget.
 4. Captures a page snapshot: URL/title/description, headings, forms and field metadata, visible interactive controls, accessibility hints, enabled/disabled state, links and visible text.
-5. Records each element independently with its page and session provenance.
+5. Records each element independently with its page and session provenance, including resilient locator hints, form constraints, select options, tables and page landmarks.
 6. Safely exercises only low-risk UI affordances (tabs, expanded/collapsed controls, disclosure summaries, and controls with navigation/presentation semantics such as menu, open, view, expand, filter or sort).
-7. Compares before/after state fingerprints and records observed transitions. Newly revealed links are added to the crawl queue.
-8. Captures browser console errors and failed requests, bounded to a small sample.
+7. Compares before/after state fingerprints and records observed transitions. Newly revealed links are added to the crawl queue. Route discovery edges and per-run progress are exposed to the UI.
+8. Captures browser console errors and failed requests, bounded to a small sample. Page and changed-state screenshots are saved to a shared evidence volume when masking styles can be applied; the API serves those images by session-scoped filename.
 9. Stores raw observations as unverified. The ML pipeline must not treat them as labels.
 
 ## API read models
@@ -35,6 +35,6 @@ The browser is not a substitute for network-level egress isolation. Production w
 
 ## Current boundaries
 
-This release does not yet provide a persistent authenticated browser profile, user-approved form/data-entry execution, screenshots/traces stored in object storage, cross-browser execution, API schema inference, accessibility conformance certification, or end-to-end business-flow assertions. It discovers and records UI-level transitions; a human or a verified oracle is still required to decide whether an outcome is correct.
+This release does not yet provide a persistent authenticated browser profile, user-approved form/data-entry execution, cloud object-storage retention for screenshots/traces, cross-browser execution, API schema inference, accessibility conformance certification, or end-to-end business-flow assertions. Local Docker Compose persists screenshots in a shared named volume; a cloud deployment must configure private object storage. Screenshot masking is best-effort and is not a substitute for avoiding sensitive data in test environments. It discovers and records UI-level transitions; a human or a verified oracle is still required to decide whether an outcome is correct.
 
 For complete production use, deploy the API, PostgreSQL, Redis, worker and object storage together. Vercel hosts the Next.js control plane only; it is not the Playwright execution host.
