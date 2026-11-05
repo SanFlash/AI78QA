@@ -28,6 +28,7 @@ Next.js, TypeScript, FastAPI, PostgreSQL, Redis, SQLAlchemy, Alembic, Celery, Pl
 **Windows (PowerShell):**
 
 ```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
 .\scripts\start-local.ps1
 ```
 
