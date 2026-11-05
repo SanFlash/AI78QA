@@ -520,10 +520,10 @@ def scan_authenticated():
         if not password:
             raise ValueError("Enter the password to continue.")
         try:
-            max_pages = int(request.form.get("max_pages", "5"))
+            max_pages = int(request.form.get("max_pages", "100"))
         except ValueError:
-            max_pages = 5
-        max_pages = max(1, min(max_pages, 15))
+            max_pages = 100
+        max_pages = max(1, min(max_pages, 500))
         report = run_scan(target, max_pages, username=username, password=password)
         if report.get("login_required"):
             raise ValueError("The website is still requesting authentication. This login flow may need manual handling.")
