@@ -1,5 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pathlib import Path
 import os
 import re
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from app.config import settings
 from app.database import get_db
-from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent, Observation
+from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent, Observation, EvidenceArtifact
 from app.schemas import WebsiteCreate, WebsiteRead, SessionCreate, SessionRead, HealthRead
 from app.security import validate_target_url, UnsafeTarget
 from celery import Celery
@@ -192,10 +192,21 @@ def get_evidence_file(session_id: str, filename: str, db: Session = Depends(get_
     session = db.get(TrainingSession, session_id)
     if not session:
         raise HTTPException(404, "Session not found.")
-    if not re.fullmatch(r"[A-Za-z0-9_-]+\.png", filename):
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\.(?:png|jpe?g)", filename, flags=re.I):
         raise HTTPException(400, "Invalid evidence filename.")
+    artifact = db.scalar(select(EvidenceArtifact).where(
+        EvidenceArtifact.session_id == session_id,
+        EvidenceArtifact.filename == filename,
+    ))
+    if artifact:
+        return Response(
+            content=artifact.data,
+            media_type=artifact.mime_type,
+            headers={"Content-Disposition": f'inline; filename="{filename}"', "X-Content-Type-Options": "nosniff"},
+        )
     root = Path(os.getenv("EVIDENCE_DIR", "/data/evidence")).resolve()
     target = (root / session_id / filename).resolve()
     if root not in target.parents or not target.is_file():
         raise HTTPException(404, "Evidence file not found.")
-    return FileResponse(target, media_type="image/png", filename=filename)
+    media_type = "image/jpeg" if filename.lower().endswith((".jpg", ".jpeg")) else "image/png"
+    return FileResponse(target, media_type=media_type, filename=filename)
