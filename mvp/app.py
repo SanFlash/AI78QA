@@ -30,7 +30,13 @@ def validate_target(raw_url: str) -> str:
 
 def same_origin(first: str, second: str) -> bool:
     a, b = urlparse(first), urlparse(second)
-    return (a.scheme, a.hostname, a.port) == (b.scheme, b.hostname, b.port)
+    def normalized_port(parsed):
+        return parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    return (
+        a.scheme.lower(), (a.hostname or "").lower(), normalized_port(a)
+    ) == (
+        b.scheme.lower(), (b.hostname or "").lower(), normalized_port(b)
+    )
 
 
 def clean_url(url: str) -> str:
