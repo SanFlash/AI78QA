@@ -1,10 +1,10 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent
+from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent, Observation
 from app.schemas import WebsiteCreate, WebsiteRead, SessionCreate, SessionRead, HealthRead
 from app.security import validate_target_url, UnsafeTarget
 from celery import Celery
@@ -88,3 +88,69 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
 @app.get("/api/v1/intelligence/summary")
 def intelligence_summary(db: Session = Depends(get_db)):
     return {"websites":len(db.scalars(select(TrainingWebsite)).all()),"sessions":len(db.scalars(select(TrainingSession)).all()),"observations":0,"models":0,"learning_mode":"hybrid","model_promotion":"held-out evaluation required"}
+
+
+@app.get("/api/v1/training/sessions/{session_id}/observations")
+def list_observations(
+    session_id: str,
+    kind: str | None = Query(default=None, max_length=48),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    session = db.get(TrainingSession, session_id)
+    if not session:
+        raise HTTPException(404, "Session not found.")
+    query = select(Observation).where(Observation.session_id == session_id)
+    if kind:
+        query = query.where(Observation.features["kind"].as_string() == kind)
+    rows = db.scalars(query.order_by(Observation.created_at.asc()).offset(offset).limit(limit)).all()
+    return [{
+        "id": row.id, "page_url": row.page_url, "page_title": row.page_title,
+        "element_type": row.element_type, "semantic_name": row.semantic_name,
+        "features": row.features, "label": row.label,
+        "label_verified": row.label_verified, "source": row.source,
+        "created_at": row.created_at,
+    } for row in rows]
+
+
+@app.get("/api/v1/training/sessions/{session_id}/discovery")
+def get_discovery_graph(session_id: str, db: Session = Depends(get_db)):
+    session = db.get(TrainingSession, session_id)
+    if not session:
+        raise HTTPException(404, "Session not found.")
+    rows = db.scalars(select(Observation).where(
+        Observation.session_id == session_id,
+        Observation.source.in_(["page_snapshot", "interaction_transition"])
+    ).order_by(Observation.created_at.asc())).all()
+    pages = {}
+    transitions = []
+    for row in rows:
+        features = row.features or {}
+        if features.get("kind") == "page_snapshot":
+            pages[features.get("page_key") or row.page_url] = {
+                "page_key": features.get("page_key"), "url": row.page_url,
+                "title": row.page_title, "depth": features.get("depth", 0),
+                "discovered_from": features.get("discovered_from"),
+                "headings": features.get("headings", []),
+                "forms": features.get("forms", []),
+                "element_count": features.get("element_count", 0),
+            }
+        elif features.get("kind") == "interaction_transition":
+            transitions.append({
+                "id": row.id, "from": features.get("before_url"),
+                "to": features.get("after_url"),
+                "action": features.get("action"), "target": features.get("target"),
+                "state_changed": features.get("state_changed", False),
+                "before_state": features.get("before_state"),
+                "after_state": features.get("after_state"),
+            })
+    return {
+        "session_id": session_id, "status": session.status,
+        "pages": list(pages.values()), "transitions": transitions,
+        "summary": session.summary or {},
+        "counts": {
+            "pages": len(pages), "transitions": len(transitions),
+            "changed_states": sum(1 for item in transitions if item["state_changed"]),
+        },
+    }
