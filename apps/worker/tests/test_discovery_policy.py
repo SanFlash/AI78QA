@@ -1,5 +1,13 @@
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
+API_ROOT = Path(__file__).resolve().parents[2] / "api"
+WORKER_APP = Path(__file__).resolve().parents[1] / "app"
+sys.path.insert(0, str(API_ROOT))
+import app
+app.__path__.append(str(WORKER_APP))
 
 from app.browser_discovery import canonical_url, public_host, stable_hash, redact_text
 
