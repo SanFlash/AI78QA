@@ -114,7 +114,7 @@ def inspect_page(page, url: str) -> dict:
       return {
         title: document.title || '',
         headings: [...document.querySelectorAll('h1,h2,h3')].slice(0, 40).map(text).filter(Boolean),
-        links: [...document.querySelectorAll('a[href]')].slice(0, 150).map(a => ({
+        links: [...document.querySelectorAll('a[href]')].map(a => ({
           text: text(a), href: a.href
         })).filter(a => a.href),
         buttons: [...document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]')].slice(0, 100).map(attrs),
@@ -168,7 +168,9 @@ def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict
             before = page.evaluate("""() => ({
               url: location.href, title: document.title,
               active: [...document.querySelectorAll('[role="tab"][aria-selected="true"],[aria-current="page"],.active')].slice(0,12).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
-              dialogs: [...document.querySelectorAll('[role="dialog"],dialog[open]')].filter(e => e.getBoundingClientRect().width).map(e => (e.innerText || '').trim().slice(0,500))
+              dialogs: [...document.querySelectorAll('[role="dialog"],dialog[open]')].filter(e => e.getBoundingClientRect().width).map(e => (e.innerText || '').trim().slice(0,500)),
+              expanded: [...document.querySelectorAll('[aria-expanded="true"]')].slice(0,30).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
+              visibleText: (document.body.innerText || '').slice(0,3000)
             })""")
             clicked = page.evaluate("""index => {
               const visible = el => { const r=el.getBoundingClientRect(),s=getComputedStyle(el); return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none'; };
@@ -186,7 +188,9 @@ def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict
               expanded: [...document.querySelectorAll('[aria-expanded="true"]')].slice(0,15).map(e => (e.innerText || e.getAttribute('aria-label') || '').trim().slice(0,80)),
               visibleText: (document.body.innerText || '').slice(0,1200)
             })""")
+            revealed_links = page.locator("a[href]").evaluate_all("""els => els.map(a => ({text:(a.innerText || a.textContent || '').trim(), href:a.href}))""")
             results.append({"control": item["label"], "role": item["role"], "before": before, "after": after,
+                            "discovered_links": revealed_links,
                             "observed_change": before != {k: after.get(k) for k in before}})
             # Reload the same-origin page to restore a predictable state, retaining cookies.
             if clean_url(page.url) != original_url or before != {key: after.get(key) for key in before}:
@@ -382,6 +386,10 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                         destination = clean_url(action.get("after", {}).get("url", ""))
                         if destination and destination != current and same_origin(start_url, destination) and destination not in visited and destination not in queue:
                             queue.append(destination)
+                        for revealed in action.get("discovered_links", []):
+                            candidate = clean_url(urljoin(current, revealed.get("href", "")))
+                            if candidate and same_origin(start_url, candidate) and candidate not in visited and candidate not in queue:
+                                queue.append(candidate)
                     result["api_requests"] = [r for r in observed_requests if any(token in r["url"].lower() for token in ("/api/", "/graphql", "/rpc/", "/ajax/", "/rest/"))]
                     screenshot_name = f"page_{len(pages) + 1}.png"
                     save_screenshot(page, screenshot_name)
@@ -411,6 +419,67 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
         "scope": "Same-origin authenticated discovery with safe UI exploration and passive request observation. Credentials are transient and are not saved. Business transactions, form submissions, purchases, messages, deletion, payment and logout actions are not executed."
     }
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    document_name = f"ai78qa_report_{stamp}.md"
+    document_path = REPORT_DIR / document_name
+    lines = [
+        "# AI78QA — Complete Website Discovery Report", "",
+        f"- Target URL: {start_url}",
+        f"- Generated (UTC): {report['created_at']}",
+        f"- Pages discovered: {len(pages)} / configured limit {max_pages}",
+        f"- Errors: {len(errors)}",
+        f"- Same-origin requests observed: {len(observed_requests)}",
+        f"- API-like endpoints: {len(report['api_endpoints'])}", "",
+        "## Coverage overview", "",
+        "This report records every page visited within the configured page limit, all extracted same-origin links, visible controls and fields, forms, tables, safe interaction observations, screenshots and passively observed requests.", "",
+        "## Page-by-page details", ""
+    ]
+    for index, item in enumerate(pages, 1):
+        lines += [
+            f"### {index}. {item.get('title') or 'Untitled page'}", "",
+            f"- URL: {item.get('url', '')}",
+            f"- Screenshot file: {item.get('screenshot', 'Not captured')}",
+            f"- Links discovered: {len(item.get('links', []))}",
+            f"- Buttons/controls: {len(item.get('buttons', []))}",
+            f"- Fields: {len(item.get('fields', []))}",
+            f"- Forms: {len(item.get('forms', []))}",
+            f"- Tables: {len(item.get('tables', []))}", "",
+            "**Headings**", ""
+        ]
+        lines += [f"- {x}" for x in item.get("headings", [])] or ["- None"]
+        lines += ["", "**All extracted links**", ""]
+        lines += [f"- [{x.get('text') or '(no link text)'}]({x.get('href')})" for x in item.get("links", [])] or ["- None"]
+        lines += ["", "**Controls**", ""]
+        lines += [f"- {x.get('tag')} | {x.get('type')} | {x.get('text') or x.get('ariaLabel') or x.get('name') or x.get('id')}" for x in item.get("buttons", [])] or ["- None"]
+        lines += ["", "**Fields and select options**", ""]
+        for field in item.get("fields", []):
+            lines.append(f"- {field.get('tag')} | type={field.get('type')} | name={field.get('name')} | id={field.get('id')} | placeholder={field.get('placeholder')} | required={field.get('required')}")
+            for option in field.get("options", []):
+                lines.append(f"  - Option: {option.get('text')} (value={option.get('value')})")
+        lines += ["", "**Forms**", ""]
+        lines += [f"- {f.get('method')} {f.get('action')} — {f.get('fields')} controls" for f in item.get("forms", [])] or ["- None"]
+        lines += ["", "**Tables**", ""]
+        lines += [f"- Headers: {', '.join(t.get('headers', []))}; rows: {t.get('rows')}" for t in item.get("tables", [])] or ["- None"]
+        lines += ["", "**Safe interactions and observed outcomes**", ""]
+        for action in item.get("interactive_exploration", []):
+            lines.append(f"- {action.get('control')}: " + ("visible state change observed" if action.get("observed_change") else action.get("error", "no clear state change observed")))
+            if action.get("after", {}).get("url"):
+                lines.append(f"  - Result URL: {action['after']['url']}")
+            lines += [f"  - Revealed link: {x.get('text')} — {x.get('href')}" for x in action.get("discovered_links", [])]
+        lines += ["", "**API-like requests observed on this page**", ""]
+        lines += [f"- {x.get('method')} {x.get('url')} [{x.get('resource_type')}]" for x in item.get("api_requests", [])] or ["- None identified by API URL pattern"]
+        lines += ["", "---", ""]
+    lines += ["## API endpoint inventory", ""]
+    lines += [f"- {x}" for x in report.get("api_endpoints", [])] or ["- No URL matching common API patterns was identified."]
+    lines += ["", "## Crawl errors and inaccessible pages", ""]
+    lines += [f"- {x.get('url')}: {x.get('error')}" for x in errors] or ["- No crawl errors."]
+    lines += ["", "## Crawl limitations", "",
+              f"- The crawl stops after {max_pages} pages. Increase the configured limit if the report says the limit was reached.",
+              "- Only same-origin destinations are followed. External links are recorded but not crawled.",
+              "- Safe interaction exploration does not submit business forms, add items to carts, make payments, send messages, delete records, or log out.",
+              "- A page that requires a unique workflow, OTP, CAPTCHA, SSO, or user-specific state may need manual assistance.",
+              "- API traffic is observed passively; endpoints are not replayed or attacked.", ""]
+    document_path.write_text("\\n".join(lines), encoding="utf-8")
+    report["document_file"] = document_name
     report_path = REPORT_DIR / f"ai78qa_report_{stamp}.json"
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     report["report_file"] = report_path.name
@@ -427,10 +496,10 @@ def scan():
     try:
         target = validate_target(request.form.get("url", ""))
         try:
-            max_pages = int(request.form.get("max_pages", "5"))
+            max_pages = int(request.form.get("max_pages", "100"))
         except ValueError:
-            max_pages = 5
-        max_pages = max(1, min(max_pages, 15))
+            max_pages = 100
+        max_pages = max(1, min(max_pages, 500))
         report = run_scan(target, max_pages)
         if report.get("login_required"):
             return render_template(
