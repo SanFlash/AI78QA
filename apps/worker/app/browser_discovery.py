@@ -302,7 +302,7 @@ async def explore(session_id: str) -> dict:
                         try:
                             if not await locator.is_visible() or not await locator.is_enabled():
                                 continue
-                            before = scrub_snapshot(await page_snapshot(page))
+                            before = scrub_snapshot(await page_snapshot(page), site.base_url, host)
                             target = await locator.evaluate("""el => ({
                               tag: el.tagName.toLowerCase(),
                               role: el.getAttribute('role') || '',
@@ -324,13 +324,14 @@ async def explore(session_id: str) -> dict:
                                 continue
                             # Only interact with explicit UI controls, not arbitrary clickable containers.
                             before_url = canonical_url(page.url, site.base_url, host) or current_url
+                            before_key = stable_hash({"url": before_url, "body": before["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in before["elements"][:100]]})
                             await locator.click(timeout=1800, no_wait_after=True)
                             await page.wait_for_timeout(250)
                             after_url = canonical_url(page.url, site.base_url, host)
                             if not after_url:
                                 await page.go_back(wait_until="domcontentloaded", timeout=5000)
                                 continue
-                            after = scrub_snapshot(await page_snapshot(page))
+                            after = scrub_snapshot(await page_snapshot(page), site.base_url, host)
                             # Menus, tabs and accordions often reveal routes absent from the initial DOM.
                             revealed_links = await page.locator("a[href]").evaluate_all("(els) => els.map(a => a.href).slice(0, 250)")
                             for revealed in revealed_links:
@@ -343,7 +344,6 @@ async def explore(session_id: str) -> dict:
                             if before_key != after_key:
                                 transition_evidence_name = f"state-{interaction_count + 1:04d}.png"
                                 await page.screenshot(path=str(evidence_root / transition_evidence_name), full_page=False, animations="disabled")
-                            before_key = stable_hash({"url": before_url, "body": before["body_text"], "elements": [(x["tag"],x["name"],x["expanded"],x["selected"]) for x in before["elements"][:100]]})
                             changed = before_key != after_key
                             interaction_count += 1
                             if changed:
