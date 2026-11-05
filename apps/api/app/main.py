@@ -5,7 +5,7 @@ import os
 import re
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.config import settings
 from app.database import Base, engine, get_db
 from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent, Observation
@@ -91,7 +91,14 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
 
 @app.get("/api/v1/intelligence/summary")
 def intelligence_summary(db: Session = Depends(get_db)):
-    return {"websites":len(db.scalars(select(TrainingWebsite)).all()),"sessions":len(db.scalars(select(TrainingSession)).all()),"observations":0,"models":0,"learning_mode":"hybrid","model_promotion":"held-out evaluation required"}
+    return {
+        "websites": db.scalar(select(func.count()).select_from(TrainingWebsite)) or 0,
+        "sessions": db.scalar(select(func.count()).select_from(TrainingSession)) or 0,
+        "observations": db.scalar(select(func.count()).select_from(Observation)) or 0,
+        "models": 0,
+        "learning_mode": "hybrid",
+        "model_promotion": "held-out evaluation required",
+    }
 
 
 @app.get("/api/v1/training/sessions/{session_id}/observations")
@@ -148,7 +155,8 @@ def get_discovery_graph(session_id: str, db: Session = Depends(get_db)):
                 "action": features.get("action"), "target": features.get("target"),
                 "state_changed": features.get("state_changed", False),
                 "before_state": features.get("before_state"),
-                "after_state": features.get("after_state"),\n                "evidence_file": features.get("evidence_file"),
+                "after_state": features.get("after_state"),
+                "evidence_file": features.get("evidence_file"),
             })
     return {
         "session_id": session_id, "status": session.status,
