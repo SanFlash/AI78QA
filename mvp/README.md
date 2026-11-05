@@ -41,7 +41,10 @@ python app.py
 - Links, buttons, input fields, dropdown options and forms
 - Table headers and page landmarks
 - Full-page screenshots
-- Downloadable JSON report
+- Authenticated same-origin crawling using the live post-login session
+- Safe exploration of visible menus, tabs, accordions, details and other low-risk controls, recording observed state changes
+- Passive capture of same-origin network requests and API-like endpoint URLs
+- Downloadable JSON report and a Markdown discovery document with page-by-page details
 - Local-only dashboard
 
 ## Deliberate MVP limitations
@@ -52,7 +55,9 @@ python app.py
 - Starts crawling from the actual post-login destination (for example, an inventory/dashboard URL) rather than reloading the login URL
 - Distinguishes a real login form from an arbitrary password field to reduce false session-expiry errors
 - Masks input and textarea fields in screenshots (other account-page content may still be visible)
-- No form submission or destructive interactions
+- No application form submission or destructive business interactions (purchases, payments, sending messages, deleting records, or logout)
+- Safe UI exploration is heuristic and does not guarantee every control or business workflow is covered
+- API discovery is passive: requests are observed, not replayed, fuzzed, or attacked
 - No AI-generated test cases yet
 - No automated pass/fail assertions
 - Standard single-page username/password forms are supported; OTP, CAPTCHA, SSO, MFA and multi-step login flows may require manual handling
