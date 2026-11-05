@@ -180,7 +180,10 @@ async def page_snapshot(page) -> dict:
         fields: Array.from(form.elements).filter(el => el.name || el.id).slice(0, 80).map(el => ({
           name: el.name || el.id, type: el.type || el.tagName.toLowerCase(),
           required: !!el.required, disabled: !!el.disabled,
-          label: clean(el.labels?.[0]?.innerText || el.getAttribute('aria-label') || el.placeholder)
+          label: clean(el.labels?.[0]?.innerText || el.getAttribute('aria-label') || el.placeholder),
+          min: el.getAttribute('min'), max: el.getAttribute('max'),
+          min_length: el.getAttribute('minlength'), max_length: el.getAttribute('maxlength'),
+          pattern: el.getAttribute('pattern'), autocomplete: el.getAttribute('autocomplete')
         }))
       }));
       return {
