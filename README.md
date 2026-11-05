@@ -26,8 +26,8 @@ Next.js, TypeScript, FastAPI, PostgreSQL, Redis, SQLAlchemy, Alembic, Celery, Pl
 ## Quick start
 
 1. Copy `.env.example` to `.env` and set strong local credentials.
-2. Start services: `docker compose up --build`.
-3. Apply migrations: `docker compose exec api alembic upgrade head`.
+2. Start services: `docker compose -f infra/docker-compose.yml up --build`.
+3. The API container applies Alembic migrations before serving requests.
 4. Web: http://localhost:3000
 5. API docs: http://localhost:8000/docs
 6. In the web app Settings, set API base URL to `http://localhost:8000/api/v1`.
