@@ -7,9 +7,10 @@ from app.database import Base, engine, get_db
 from app.models import Project, TrainingWebsite, TrainingSession, AuditEvent
 from app.schemas import WebsiteCreate, WebsiteRead, SessionCreate, SessionRead, HealthRead
 from app.security import validate_target_url, UnsafeTarget
-from app.tasks import explore_training_session
+from celery import Celery
 
 Base.metadata.create_all(bind=engine)
+queue = Celery("ai78qa-api", broker=settings.redis_url, backend=settings.redis_url)
 app = FastAPI(title="AI78QA API", version="0.1.0", description="Autonomous QA and Training Lab API")
 app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -68,9 +69,11 @@ def create_session(payload: SessionCreate, db: Session = Depends(get_db)):
     db.add(AuditEvent(action="training.session.queued",resource_type="training_session",resource_id=session.id,details={"host":host,"max_pages":payload.max_pages}))
     db.commit(); db.refresh(session)
     try:
-        explore_training_session.delay(session.id)
+        queue.send_task("training.explore", args=[session.id])
     except Exception:
-        pass
+        session.status = "queue_unavailable"
+        session.summary = {"warning": "Session persisted but the worker broker is unavailable."}
+        db.commit()
     return session
 
 @app.get("/api/v1/training/sessions/{session_id}", response_model=SessionRead)
