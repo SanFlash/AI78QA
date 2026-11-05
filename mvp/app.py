@@ -189,7 +189,7 @@ def explore_safe_interactions(page, page_url: str, limit: int = 20) -> list[dict
             results.append({"control": item["label"], "role": item["role"], "before": before, "after": after,
                             "observed_change": before != {k: after.get(k) for k in before}})
             # Reload the same-origin page to restore a predictable state, retaining cookies.
-            if clean_url(page.url) != original_url or after != before:
+            if clean_url(page.url) != original_url or JSON.stringify(before) !== JSON.stringify(Object.fromEntries(Object.keys(before).map(k => [k, after[k]]))):
                 page.goto(original_url, wait_until="domcontentloaded", timeout=20000)
                 wait_for_page(page)
         except Exception as exc:
