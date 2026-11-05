@@ -143,10 +143,51 @@ def find_username_field(page):
     return None
 
 
+def login_feedback(page) -> str:
+    selectors = [
+        '[role="alert"]:visible',
+        '[aria-live="assertive"]:visible',
+        '.error-message-container:visible',
+        '.error:visible',
+        '.alert-danger:visible',
+        '.invalid-feedback:visible',
+        '[data-testid*="error" i]:visible'
+    ]
+    for selector in selectors:
+        locator = page.locator(selector).first
+        try:
+            if locator.count():
+                message = locator.inner_text(timeout=1000).strip()
+                if message:
+                    return " ".join(message.split())[:300]
+        except Exception:
+            continue
+    return ""
+
+
+def authenticated_indicators(page) -> bool:
+    selectors = [
+        '[aria-label*="logout" i]:visible',
+        'a[href*="logout" i]:visible',
+        'button:has-text("Log out"):visible',
+        'button:has-text("Logout"):visible',
+        'button:has-text("Sign out"):visible',
+        '[data-testid*="inventory" i]:visible',
+        '[data-testid*="dashboard" i]:visible'
+    ]
+    for selector in selectors:
+        try:
+            if page.locator(selector).count():
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def submit_login(page, username: str, password: str) -> None:
     password_field = page.locator('input[type="password"]:visible').first
     if not password_field.count():
-        raise ValueError("A visible password field was not found. This login page may require a different authentication flow.")
+        raise ValueError("A visible password field was not found on the detected login page.")
 
     username_field = find_username_field(page)
     if username and username_field is not None:
@@ -156,21 +197,49 @@ def submit_login(page, username: str, password: str) -> None:
     submit_selectors = [
         'button[type="submit"]:visible',
         'input[type="submit"]:visible',
+        'button[id*="login" i]:visible',
+        'button[name*="login" i]:visible',
+        'input[id*="login" i]:visible',
         'button:has-text("Log in"):visible',
         'button:has-text("Login"):visible',
         'button:has-text("Sign in"):visible',
-        'input[type="button"][value*="login" i]:visible'
+        'button:has-text("Continue"):visible',
+        'button:has-text("Submit"):visible'
     ]
+
     submitted = False
     for selector in submit_selectors:
-        button = page.locator(selector).first
-        if button.count():
-            button.click(timeout=5000)
-            submitted = True
-            break
+        try:
+            button = page.locator(selector).first
+            if button.count():
+                button.click(timeout=5000)
+                submitted = True
+                break
+        except Exception:
+            continue
+
     if not submitted:
-        password_field.press("Enter")
-    wait_for_page(page)
+        try:
+            password_field.press("Enter", timeout=3000)
+        except Exception as exc:
+            raise ValueError("Could not find a login submit button or submit the login form with Enter.") from exc
+
+    # Wait for a real transition, a known authenticated marker, or an error message.
+    for _ in range(10):
+        page.wait_for_timeout(500)
+        feedback = login_feedback(page)
+        if feedback:
+            raise ValueError(f"The website rejected the login: {feedback}")
+        if not visible_login_form(page) or authenticated_indicators(page):
+            return
+
+    feedback = login_feedback(page)
+    if feedback:
+        raise ValueError(f"The website rejected the login: {feedback}")
+    if visible_login_form(page):
+        raise ValueError(
+            "The login form is still visible after submission. The site may have rejected the credentials, require an extra step, or use a custom login flow. Check the website's message and try again."
+        )
 
 
 def save_screenshot(page, filename: str) -> None:
@@ -201,11 +270,11 @@ def run_scan(start_url: str, max_pages: int, username: str = "", password: str =
                 if not password:
                     return {"login_required": True, "login_url": login_url, "target": start_url}
                 submit_login(page, username, password)
-                if visible_login_form(page):
+                if visible_login_form(page) and not authenticated_indicators(page):
                     raise ValueError(
-                        "Login was not completed. Check the credentials, or this site may require an OTP, CAPTCHA, SSO, or a multi-step login that needs manual handling."
+                        "The website still shows its login form. Complete any additional authentication step or check the site's login message."
                     )
-                page.goto(start_url, wait_until="domcontentloaded", timeout=25000)
+                # Continue from the authenticated page first; the crawler will follow same-origin links from here.
                 wait_for_page(page)
 
             # The authenticated browser context is reused for every discovered page,
