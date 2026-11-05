@@ -84,14 +84,20 @@ def redact_text(value: str) -> str:
     return value[:6000]
 
 
-def scrub_snapshot(snapshot: dict) -> dict:
+def scrub_snapshot(snapshot: dict, base_url: str, allowed_host: str) -> dict:
     def scrub(value):
         if isinstance(value, str):
             return redact_text(value)
         if isinstance(value, list):
             return [scrub(item) for item in value]
         if isinstance(value, dict):
-            return {key: scrub(item) for key, item in value.items()}
+            cleaned = {}
+            for key, item in value.items():
+                if key in {"href", "url"} and isinstance(item, str):
+                    cleaned[key] = canonical_url(item, base_url, allowed_host)
+                else:
+                    cleaned[key] = scrub(item)
+            return cleaned
         return value
     return scrub(snapshot)
 
@@ -214,7 +220,7 @@ async def explore(session_id: str) -> dict:
             await install_request_guard(context, host)
             page = await context.new_page()
             page.set_default_timeout(5000)
-            page.on("console", lambda msg: console_errors.append(msg.text[:500]) if msg.type == "error" and len(console_errors) < 50 else None)
+            page.on("console", lambda msg: console_errors.append(redact_text(msg.text)[:500]) if msg.type == "error" and len(console_errors) < 50 else None)
             page.on("requestfailed", lambda req: request_failures.append({"url": urlunparse((*urlparse(req.url)[:4], "", ""))[:500], "failure": (req.failure or "")[:200]}) if len(request_failures) < 50 else None)
 
             while queue and page_count < session.max_pages:
@@ -239,7 +245,7 @@ async def explore(session_id: str) -> dict:
                     except PlaywrightTimeoutError:
                         pass
                     await page.wait_for_timeout(350)
-                    snapshot = scrub_snapshot(await page_snapshot(page))
+                    snapshot = scrub_snapshot(await page_snapshot(page), site.base_url, host)
                     evidence_root = Path(os.getenv("EVIDENCE_DIR", "/data/evidence")) / session.id
                     evidence_root.mkdir(parents=True, exist_ok=True)
                     page_evidence_name = f"page-{page_count + 1:04d}.png"
@@ -247,7 +253,7 @@ async def explore(session_id: str) -> dict:
                     await page.add_style_tag(content="""
                       input, textarea, select, [type=password], [autocomplete*=email],
                       [autocomplete*=tel], [autocomplete*=cc-], [data-private] {
-                        color: transparent !important; text-shadow: 0 0 8px currentColor !important;
+                        filter: blur(8px) !important; color: transparent !important; text-shadow: none !important;
                       }
                     """)
                     await page.screenshot(path=str(page_evidence_path), full_page=False, animations="disabled")
