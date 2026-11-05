@@ -42,7 +42,7 @@
     <div class="stats">
       <div class="stat"><span class="muted">Pages scanned</span><strong>{{report.pages_scanned}}</strong></div>
       <div class="stat"><span class="muted">Errors</span><strong>{{report.errors_count}}</strong></div>
-      <div class="stat"><span class="muted">Total forms</span><strong>{{report.pages|sum(attribute='forms')|length if false else report.pages|map(attribute='forms')|map('length')|sum}}</strong></div>
+      <div class="stat"><span class="muted">Total forms</span><strong>{{report.pages|map(attribute='forms')|map('length')|sum}}</strong></div>
     </div>
     <p class="small">Target: {{report.target}} · {{report.created_at}}</p>
     <p><a href="{{url_for('download_report', filename=report.report_file)}}">Download JSON report</a></p>
